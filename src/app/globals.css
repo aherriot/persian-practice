@@ -1,26 +1,45 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/**
+ * Design tokens — "Persian Architecture" theme.
+ *
+ * Palette and pattern are drawn from Persian tilework architecture — glazed
+ * cobalt-and-turquoise geometric tile (girih) surfaces, gilt muqarnas cells,
+ * brick iwans — the feeling of a place like the Kashan bazaar. Vivid, not
+ * washed-out: the tile colors are meant to read as saturated glaze, not
+ * sun-faded stone. Every color pairing this app actually sets text on has
+ * been checked against WCAG contrast — see docs/design-system.md for the
+ * full table and usage rules. `gold` and `turquoise` are decorative/large-
+ * scale only (they fail contrast as small text-on-sand); `turquoise-dark`
+ * and `terracotta` note their text-safe conditions below.
+ */
+@theme {
+  --color-sand: #ede3d2; /* primary background — plaster / warm brick wall */
+  --color-paper: #f7f2e9; /* card/surface background, lighter than sand */
+  --color-ink: #2a1d16; /* primary text — deep umber, shadowed brick */
+  --color-cobalt: #123e7a; /* primary accent — glazed tile blue, safe everywhere (8.3:1 on sand) */
+  --color-turquoise: #0b8c86; /* decorative/large only — pattern, borders, icons (3.2:1 on sand) */
+  --color-turquoise-dark: #046a66; /* text-safe turquoise — buttons/links (5.1:1 on sand) */
+  --color-terracotta: #c1502e; /* accent — AA-large text on sand, AA as button bg w/ white text */
+  --color-gold: #d9a61e; /* decorative only — muqarnas gilding (1.8:1 on sand, pairs w/ ink at 7.3:1) */
+  --color-crimson: #9b2b3c; /* emphasis/error, safe everywhere (5.9:1 on sand) */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display-latin: var(--font-display-latin);
+  --font-body-latin: var(--font-body-latin);
+  --font-display-fa: var(--font-display-fa);
+  --font-body-fa: var(--font-body-fa);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-sand);
+  color: var(--color-ink);
+  font-family: var(--font-body-latin);
+}
+
+/* Persian text should default to Vazirmatn + RTL, regardless of the
+   surrounding page's base direction — set this on any element carrying
+   Persian content via dir="rtl" or lang="fa". */
+[lang="fa"],
+[dir="rtl"] {
+  font-family: var(--font-body-fa), var(--font-body-latin);
 }
