@@ -18,10 +18,20 @@ function stripPunctuation(word: string): string {
  * close it. Works identically for touch and mouse — no separate hover-only
  * affordance needed, since a tap doubles as both "reveal" and "dismiss."
  */
-export function MessageContent({ text, sentence }: { text: string; sentence: string }) {
+export function MessageContent({
+  text,
+  sentence,
+  turnId,
+}: {
+  text: string;
+  sentence: string;
+  turnId: string;
+}) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [def, setDef] = useState<Definition | null>(null);
   const [loading, setLoading] = useState(false);
+  const [flagging, setFlagging] = useState(false);
+  const [flaggedWords, setFlaggedWords] = useState<Set<string>>(new Set());
   const containerRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -66,6 +76,31 @@ export function MessageContent({ text, sentence }: { text: string; sentence: str
     }
   }
 
+  async function flagWord(rawWord: string) {
+    const key = stripPunctuation(rawWord);
+    if (flagging || flaggedWords.has(key)) return;
+    const cached = definitionCache.get(key);
+    if (!cached) return;
+    setFlagging(true);
+    try {
+      const res = await fetch("/api/vocab/flag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          persian: key,
+          gloss: cached.gloss,
+          transliteration: cached.transliteration,
+          turnId,
+        }),
+      });
+      if (res.ok) {
+        setFlaggedWords((prev) => new Set(prev).add(key));
+      }
+    } finally {
+      setFlagging(false);
+    }
+  }
+
   return (
     <span ref={containerRef}>
       {tokens.map((token, i) => {
@@ -85,9 +120,22 @@ export function MessageContent({ text, sentence }: { text: string; sentence: str
             {openIndex === i && (
               <span
                 dir="ltr"
-                className="absolute left-1/2 top-full z-10 mt-1 w-max max-w-[220px] -translate-x-1/2 rounded-md bg-gray-900 px-2 py-1 text-left text-xs text-white shadow-lg"
+                className="absolute left-1/2 top-full z-10 mt-1 flex w-max max-w-[220px] flex-col items-start gap-1 rounded-md bg-gray-900 px-2 py-1.5 text-left text-xs text-white shadow-lg"
               >
-                {loading ? "…" : def ? `${def.gloss} — ${def.transliteration}` : "no definition"}
+                <span>{loading ? "…" : def ? `${def.gloss} — ${def.transliteration}` : "no definition"}</span>
+                {def && !loading && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      flagWord(token);
+                    }}
+                    disabled={flagging || flaggedWords.has(stripPunctuation(token))}
+                    className="text-gray-300 underline decoration-dotted disabled:no-underline disabled:text-green-400"
+                  >
+                    {flaggedWords.has(stripPunctuation(token)) ? "✓ added to review" : "I had to look this up"}
+                  </button>
+                )}
               </span>
             )}
           </span>

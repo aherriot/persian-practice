@@ -210,6 +210,8 @@ export type PromptItem = {
   ref: number;
   persian: string;
   gloss: string;
+  /** Due for SRS review (already seen) vs. never introduced to this learner before. */
+  isNew: boolean;
 };
 
 export type ConversationContext = {
@@ -237,17 +239,36 @@ export function buildConversationSystemPrompt(
       ? "- Keep replies to ONE short sentence. This is speech, not prose."
       : `- Keep replies SHORT — at most ${maxSentences} sentences. This is speech, not prose.`;
 
-  const itemsSection =
-    ctx.dueItems.length === 0
+  const reviewItems = ctx.dueItems.filter((i) => !i.isNew);
+  const newItems = ctx.dueItems.filter((i) => i.isNew);
+
+  const reviewSection =
+    reviewItems.length === 0
       ? []
       : [
           "",
-          "## Items to work in",
+          "## Words to review",
           "",
-          "Try to naturally use or prompt these in the next turn or two — weave them into",
-          "the conversation, don't force them or turn this into a vocab drill:",
+          "The learner has seen these before. Weave them in naturally where they fit —",
+          "don't force them or turn this into a drill:",
           "",
-          ...ctx.dueItems.map((item) => `  [${item.ref}] ${item.persian} (${item.gloss})`),
+          ...reviewItems.map((item) => `  [${item.ref}] ${item.persian} (${item.gloss})`),
+        ];
+
+  const newItemsSection =
+    newItems.length === 0
+      ? []
+      : [
+          "",
+          "## New words to teach",
+          "",
+          "The learner has NEVER seen these. Prioritize introducing at least one this turn —",
+          "this is how they learn new vocabulary, so don't just default to words they already",
+          "know. The FIRST time you use a new word in a turn, add a short English gloss in",
+          "parentheses right after it (e.g. چمدون (suitcase))  — this is the one exception to",
+          "never writing English inline. After that first use, use it plain.",
+          "",
+          ...newItems.map((item) => `  [${item.ref}] ${item.persian} (${item.gloss})`),
         ];
 
   const mistakesSection =
@@ -283,7 +304,8 @@ export function buildConversationSystemPrompt(
     `- Match the learner's level (${levelDescription(ctx.level)}): simple vocabulary and`,
     "  short sentences for a beginner, more range for a stronger learner.",
     "- Ask one question at a time so the learner always has something to answer.",
-    ...itemsSection,
+    ...reviewSection,
+    ...newItemsSection,
     ...mistakesSection,
     "",
     "## Mistakes — recast, do not correct",
@@ -306,12 +328,15 @@ export function buildConversationSystemPrompt(
     "Honour direct requests: slower, repeat that, what does that word mean, say it in",
     "English.",
     "",
-    "## Reporting item usage",
+    "## Reporting item usage — REQUIRED, every turn",
     "",
-    "For every item listed under \"Items to work in\" above, report in `items_used`",
-    "whether the learner's PRECEDING message used it correctly (\"correct\"), used it but",
-    "got it wrong so you recast it (\"recast\"), or didn't come up at all (\"not_attempted\").",
-    "Only include refs from the list above — never invent a ref number.",
+    "`items_used` MUST have exactly one entry for EVERY ref listed under \"Words to review\"",
+    "and \"New words to teach\" above — never leave it empty or partial if any items were",
+    "listed. For each ref: \"correct\" if the learner's PRECEDING message used it correctly,",
+    "\"recast\" if they used it but got it wrong so you recast it, or \"not_attempted\" if it",
+    "didn't come up in their message at all — including a word YOU just introduced in your",
+    "own `reply` that they haven't had a chance to respond to yet. Only include refs from",
+    "the list above — never invent a ref number.",
     "",
     "## Transliteration",
     "",
@@ -322,7 +347,9 @@ export function buildConversationSystemPrompt(
     "## Never",
     "",
     "- Never write transliteration or English translations INSIDE `reply` unless asked —",
-    "  that's what the `transliteration` field and the learner's button are for.",
+    "  that's what the `transliteration` field and the learner's button are for. The ONE",
+    "  exception is a first-use parenthetical gloss for a word under \"New words to teach\",",
+    "  per that section above.",
     "- Never break character to comment on their grammar.",
     `- Never produce more than about ${maxSentences * 15} words in a turn.`,
     "",

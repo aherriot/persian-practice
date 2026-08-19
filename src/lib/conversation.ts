@@ -4,14 +4,14 @@
  * prompt. Kept separate from `prompt.ts` (pure string-building) since these
  * touch the DB and the LLM.
  */
-import { and, desc, eq, lte, notInArray } from "drizzle-orm";
+import { and, desc, eq, lte, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { zodResponseFormat } from "openai/helpers/zod";
 import { CHAT_MODEL, openai } from "@/lib/openai";
 import { db } from "@/lib/db";
 import { conversations, corrections, items, turns, userItems } from "@/lib/db/schema";
 import type { PromptItem, Scenario } from "@/lib/prompt";
-import { NEW_ITEM_STATE, qualityFromOutcome, reviewItem } from "@/lib/srs";
+import { NEW_ITEM_STATE, placementSeedState, qualityFromOutcome, reviewItem } from "@/lib/srs";
 
 const ScenarioSchema = z.object({
   title: z.string(),
@@ -79,14 +79,20 @@ export async function deriveTopicTags(rawText: string): Promise<string[]> {
   return tags.filter((tag) => lower.includes(tag.replace(/-/g, " ")));
 }
 
-const MAX_DUE_ITEMS = 3;
-const MAX_NEW_ITEMS = 2;
+// Biased toward introducing new vocabulary rather than just reviewing due
+// items — reviewing is the easy default for both the model and the learner,
+// so new words need the numeric edge or they never come up.
+const MAX_DUE_ITEMS = 2;
+const MAX_NEW_ITEMS = 3;
 
 /**
- * Items to weave into this turn's prompt: SRS-due items first, then a couple
- * of not-yet-introduced items biased toward the topic's tags (falling back to
- * the learner's tier if nothing tags-matches). Assigns small sequential refs
- * so the model never has to echo back a real item UUID (see prompt.ts).
+ * Items to weave into this turn's prompt: SRS-due items first, then a few
+ * not-yet-introduced items biased toward the topic's tags (falling back to
+ * the learner's tier if nothing tags-matches), picked at random each time so
+ * the same couple of "new" words don't get offered on repeat. Assigns small
+ * sequential refs so the model never has to echo back a real item UUID (see
+ * prompt.ts), and tags each as due-for-review vs. genuinely new so the prompt
+ * can prioritize teaching over reviewing.
  */
 export async function selectPromptItems(
   userId: string,
@@ -115,7 +121,8 @@ export async function selectPromptItems(
     candidates = await db
       .select({ id: items.id, persian: items.persian, gloss: items.gloss, tags: items.tags })
       .from(items)
-      .where(newItemsQuery);
+      .where(newItemsQuery)
+      .orderBy(sql`random()`);
     candidates = candidates.filter((c) => c.tags.some((t) => topicTags.includes(t)));
   }
   if (candidates.length === 0) {
@@ -123,6 +130,7 @@ export async function selectPromptItems(
       .select({ id: items.id, persian: items.persian, gloss: items.gloss, tags: items.tags })
       .from(items)
       .where(newItemsQuery)
+      .orderBy(sql`random()`)
       .limit(20);
   }
   const newItems = candidates.slice(0, MAX_NEW_ITEMS);
@@ -131,17 +139,44 @@ export async function selectPromptItems(
   const refToItemId = new Map<number, string>();
   let ref = 1;
   for (const d of due) {
-    promptItems.push({ ref, persian: d.persian, gloss: d.gloss });
+    promptItems.push({ ref, persian: d.persian, gloss: d.gloss, isNew: false });
     refToItemId.set(ref, d.itemId);
     ref++;
   }
   for (const n of newItems) {
-    promptItems.push({ ref, persian: n.persian, gloss: n.gloss });
+    promptItems.push({ ref, persian: n.persian, gloss: n.gloss, isNew: true });
     refToItemId.set(ref, n.id);
     ref++;
   }
 
   return { promptItems, refToItemId };
+}
+
+/**
+ * Marks a brand-new item as "seen" after the tutor introduces it, even if the
+ * learner didn't use it back this turn — otherwise it would just get offered
+ * as "new" again indefinitely instead of graduating into the SRS review
+ * rotation. Seeded the same low-confidence way as a placement result: due
+ * again soon so early exposure quickly turns into real practice.
+ */
+export async function markIntroduced(userId: string, itemId: string): Promise<void> {
+  const existing = await db.query.userItems.findFirst({
+    where: and(eq(userItems.userId, userId), eq(userItems.itemId, itemId)),
+  });
+  if (existing) return;
+
+  const seed = placementSeedState();
+  await db.insert(userItems).values({
+    userId,
+    itemId,
+    intervalDays: seed.intervalDays,
+    easeFactor: seed.easeFactor,
+    repetitions: seed.repetitions,
+    lapses: seed.lapses,
+    dueAt: seed.dueAt.toISOString().slice(0, 10),
+    lastReviewedAt: seed.lastReviewedAt,
+    source: "conversation",
+  });
 }
 
 const RECENT_MISTAKES_LIMIT = 3;

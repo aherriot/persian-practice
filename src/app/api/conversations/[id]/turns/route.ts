@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth/session";
 import { CHAT_MODEL, errorResponse, openai, requireApiKey } from "@/lib/openai";
 import { db } from "@/lib/db";
 import { conversations, topics, turns, users } from "@/lib/db/schema";
-import { applySrsOutcome, recentMistakes, selectPromptItems } from "@/lib/conversation";
+import { applySrsOutcome, markIntroduced, recentMistakes, selectPromptItems } from "@/lib/conversation";
 import { buildConversationSystemPrompt, REGISTER_REMINDER, type ConversationContext } from "@/lib/prompt";
 
 export const runtime = "nodejs";
@@ -116,17 +116,40 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       })
       .returning();
 
+    // Don't trust the model to remember every ref (it often reports a partial
+    // or empty items_used despite the prompt instruction) — backfill any
+    // offered item it left out as "not_attempted" so new words still
+    // graduate into review even when the model's self-report is incomplete.
+    const reportedRefs = new Set(parsed.items_used.map((e) => e.ref));
+    const events = [
+      ...parsed.items_used,
+      ...promptItems.filter((p) => !reportedRefs.has(p.ref)).map((p) => ({ ref: p.ref, outcome: "not_attempted" as const })),
+    ];
+
     const itemEvents: { persian: string; gloss: string; outcome: string }[] = [];
-    for (const event of parsed.items_used) {
-      if (event.outcome === "not_attempted") continue;
+    for (const event of events) {
       const itemId = refToItemId.get(event.ref);
       if (!itemId) continue; // model invented a ref not in the offered list — ignore rather than trust it
-      await applySrsOutcome(user.id, itemId, assistantTurn.id, event.outcome);
       const promptItem = promptItems.find((p) => p.ref === event.ref);
+
+      if (event.outcome === "not_attempted") {
+        // The tutor introduced a new word but the learner hasn't used it back
+        // yet — still mark it seen so it graduates into review next time,
+        // rather than being offered as "new" forever.
+        if (promptItem?.isNew) await markIntroduced(user.id, itemId);
+        continue;
+      }
+
+      await applySrsOutcome(user.id, itemId, assistantTurn.id, event.outcome);
       if (promptItem) itemEvents.push({ ...promptItem, outcome: event.outcome });
     }
 
-    return Response.json({ reply: parsed.reply, transliteration: parsed.transliteration, itemEvents });
+    return Response.json({
+      turnId: assistantTurn.id,
+      reply: parsed.reply,
+      transliteration: parsed.transliteration,
+      itemEvents,
+    });
   } catch (err) {
     return errorResponse("conversation-turn", err);
   }

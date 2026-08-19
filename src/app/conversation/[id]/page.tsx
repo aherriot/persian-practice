@@ -120,7 +120,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
       return;
     }
 
-    const replyId = `reply-${Date.now()}`;
+    const replyId: string = body.turnId ?? `reply-${Date.now()}`;
     setData((prev) =>
       prev
         ? {
@@ -174,7 +174,7 @@ export default function ConversationPage({ params }: { params: Promise<{ id: str
               {showLatin.has(t.id) && t.transliteration ? (
                 t.transliteration
               ) : t.role === "assistant" ? (
-                <MessageContent text={t.content} sentence={t.content} />
+                <MessageContent text={t.content} sentence={t.content} turnId={t.id} />
               ) : (
                 t.content
               )}
