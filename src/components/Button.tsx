@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { Button as HeadlessButton, type ButtonProps as HeadlessButtonProps } from "@headlessui/react";
 import { GeometricPattern } from "./GeometricPattern";
 
@@ -44,12 +44,13 @@ export type ButtonProps = Omit<HeadlessButtonProps, "children"> & {
   children: ReactNode;
 };
 
-let patternIdCounter = 0;
-
 export function Button({ variant = "primary", className = "", children, ...props }: ButtonProps) {
   const v = VARIANTS[variant];
-  // Stable across re-renders of the same instance, unique per instance on the page.
-  const patternId = `btn-pattern-${(patternIdCounter++).toString(36)}`;
+  // useId(), not a module-level counter: the counter approach isn't SSR-safe
+  // — the module persists across requests on the server, so its value at
+  // render time doesn't necessarily match where the client starts fresh,
+  // producing a hydration mismatch on the pattern's id/fill attributes.
+  const patternId = `btn-pattern-${useId()}`;
 
   return (
     <HeadlessButton

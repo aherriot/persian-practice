@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 /**
  * A recessed wall niche (taghche) — modeled on the arched niches at the
@@ -57,10 +57,10 @@ export type CardProps = {
   className?: string;
 };
 
-let cardIdCounter = 0;
-
 export function Card({ niche, children, className = "" }: CardProps) {
-  const id = `taghche-${(cardIdCounter++).toString(36)}`;
+  // useId(), not a module-level counter — see Button.tsx for why a counter
+  // isn't SSR-safe (it produced the exact hydration mismatch this avoids).
+  const id = `taghche-${useId()}`;
   const slx = MARGIN_X;
   const srx = VIEW_W - MARGIN_X;
   const apexX = VIEW_W / 2;
