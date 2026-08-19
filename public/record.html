@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 0B — record STT probe clips</title>
+<style>
+  :root { color-scheme: light dark; --line: color-mix(in srgb, currentColor 15%, transparent); }
+  body { font: 16px/1.55 system-ui, sans-serif; max-width: 52rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+  h1 { font-size: 1.5rem; margin-bottom: .25rem; }
+  .intro { opacity: .8; margin-top: 0; }
+  .clip { border: 1px solid var(--line); border-radius: .6rem; padding: 1rem 1.1rem; margin: 1rem 0; }
+  .clip.saved { border-color: #2e9b57; }
+  .tag { display: inline-block; font-size: .7rem; letter-spacing: .06em; text-transform: uppercase;
+         padding: .15rem .5rem; border-radius: 1rem; border: 1px solid var(--line); opacity: .75; }
+  .tag.err { color: #c9761a; border-color: #c9761a; opacity: 1; }
+  .fa { font-size: 2.1rem; line-height: 1.7; margin: .6rem 0 .2rem; }
+  .translit { font-style: italic; opacity: .8; margin: 0; }
+  .en { opacity: .65; margin: .2rem 0 .6rem; font-size: .9rem; }
+  .warn { background: color-mix(in srgb, #c9761a 12%, transparent); padding: .5rem .7rem;
+          border-radius: .4rem; font-size: .85rem; margin: .5rem 0; }
+  .row { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-top: .6rem; }
+  button { font: inherit; padding: .45rem .9rem; border-radius: .4rem; border: 1px solid var(--line);
+           background: transparent; color: inherit; cursor: pointer; }
+  button:disabled { opacity: .4; cursor: default; }
+  select { font: inherit; font-size: .85rem; padding: .35rem .5rem; border-radius: .4rem;
+           border: 1px solid var(--line); background: transparent; color: inherit; max-width: 20rem; }
+  button.rec { border-color: #c0392b; color: #c0392b; }
+  button.rec.active { background: #c0392b; color: white; }
+  .status { font-size: .85rem; opacity: .75; font-variant-numeric: tabular-nums; }
+  .ok { color: #2e9b57; }
+  .bad { color: #c0392b; }
+  audio { height: 2rem; }
+  .meter { width: 9rem; height: .55rem; border-radius: 1rem; background: color-mix(in srgb, currentColor 15%, transparent);
+           overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0%; background: #2e9b57; transition: width .05s linear; }
+  .done { position: sticky; bottom: 0; background: Canvas; border-top: 1px solid var(--line);
+          padding: .8rem 0; margin-top: 2rem; font-size: .9rem; }
+  code { background: color-mix(in srgb, currentColor 10%, transparent); padding: .1rem .3rem; border-radius: .25rem; }
+  #miccheck { border: 1px solid var(--line); border-radius: .6rem; padding: .9rem 1.1rem; margin: 1rem 0;
+              background: color-mix(in srgb, currentColor 4%, transparent); }
+</style>
+</head>
+<body>
+<h1>Record STT probe clips</h1>
+<p class="intro">
+  Read each sentence aloud once, at a natural pace. Your accent is not a problem here —
+  accented learner speech is exactly the acoustic profile the probe needs. Clips save straight
+  into <code>spike/recordings/</code>.
+</p>
+
+<div id="miccheck">
+  <strong>Check your mic first.</strong>
+  <div class="row">
+    <button id="micBtn">Start mic test</button>
+    <select id="micDevice"><option value="">default input</option></select>
+    <div class="meter"><i id="micMeter"></i></div>
+  </div>
+  <p class="status" id="micStatus" style="margin:.5rem 0 0">not started</p>
+  <p class="warn" style="margin:.5rem 0 0">
+    <strong>Do not use Bluetooth headphones.</strong> Activating a Bluetooth mic switches the
+    device to the HFP profile — 8–16 kHz mono, built for phone calls. It often fails outright,
+    and when it works the audio is degraded enough to inflate the word error rate, so we would be
+    measuring the microphone rather than the speech recogniser. Pick the built-in mic instead.
+  </p>
+</div>
+
+<div id="clips"></div>
+
+<div class="done">
+  <span id="progress"></span> — when all are recorded, run <code>npm run spike:stt</code>
+</div>
+
+<script type="module">
+const TARGET_RATE = 16000;
+/** Below this peak amplitude a clip is certainly silence, not quiet speech. */
+const SILENCE_PEAK = 0.005;
+const DEVICE_KEY = 'stt-probe-input-device';
+
+let selectedDeviceId = localStorage.getItem(DEVICE_KEY) || '';
+
+const clips = await (await fetch('/api/spike/clips')).json();
+const container = document.getElementById('clips');
+
+let savedCount = 0;
+const updateProgress = () => {
+  document.getElementById('progress').textContent = savedCount + ' / ' + clips.length + ' recorded';
+};
+
+function writeString(view, offset, str) {
+  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+}
+
+/** 16-bit mono PCM WAV — the one format both OpenAI and Azure accept unconditionally. */
+function encodeWav(samples, sampleRate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buf);
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, samples.length * 2, true);
+  let off = 44;
+  for (const s of samples) {
+    const v = Math.max(-1, Math.min(1, s));
+    view.setInt16(off, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+    off += 2;
+  }
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+/**
+ * Resample captured audio to 16 kHz.
+ *
+ * Capture always runs at the device's native rate. Forcing
+ * `new AudioContext({ sampleRate: 16000 })` and feeding it a 48 kHz microphone
+ * makes createMediaStreamSource emit pure silence on macOS Chrome, so rate
+ * conversion has to happen after capture, where it cannot break the input path.
+ */
+async function resampleTo16k(samples, fromRate) {
+  if (fromRate === TARGET_RATE) return samples;
+  const frames = Math.ceil((samples.length * TARGET_RATE) / fromRate);
+  try {
+    const offline = new OfflineAudioContext(1, frames, TARGET_RATE);
+    const buffer = offline.createBuffer(1, samples.length, fromRate);
+    buffer.copyToChannel(samples, 0);
+    const src = offline.createBufferSource();
+    src.buffer = buffer;
+    src.connect(offline.destination);
+    src.start();
+    return (await offline.startRendering()).getChannelData(0);
+  } catch {
+    const ratio = fromRate / TARGET_RATE;
+    const out = new Float32Array(frames);
+    for (let i = 0; i < frames; i++) out[i] = samples[Math.floor(i * ratio)] ?? 0;
+    return out;
+  }
+}
+
+function peakOf(samples) {
+  let peak = 0;
+  for (const s of samples) { const a = Math.abs(s); if (a > peak) peak = a; }
+  return peak;
+}
+
+const dbfs = (amplitude) => (amplitude > 0 ? 20 * Math.log10(amplitude) : -100);
+
+/**
+ * Scale the clip so its loudest point sits near full scale.
+ *
+ * A laptop mic at conversational distance lands around -20 dBFS peak, which is
+ * quiet enough to sound like silence on playback and gives the recogniser less
+ * to work with. Scaling is lossless in the sense that matters here — it changes
+ * level, not content — and makes clips audible enough to verify by ear.
+ */
+function normalize(samples, targetPeak = 0.7) {
+  const peak = peakOf(samples);
+  if (peak <= 0) return { samples, gain: 1, peak };
+  const gain = targetPeak / peak;
+  if (gain <= 1) return { samples, gain: 1, peak };
+  const out = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) out[i] = samples[i] * gain;
+  return { samples: out, gain, peak };
+}
+
+/** Bluetooth inputs run at HFP rates; flag anything that looks like one. */
+function describeTrack(track) {
+  const settings = track.getSettings?.() ?? {};
+  const rate = settings.sampleRate;
+  const label = track.label || 'unknown input';
+  const suspect = /airpod|bluetooth|headset|hands-?free|\bbt\b/i.test(label) || (rate && rate < 24000);
+  return { label, rate, suspect };
+}
+
+// ---- one stream, one audio graph, used for both metering and capture ------
+//
+// MediaRecorder is deliberately not used. In Firefox, handing a stream to
+// MediaRecorder while that same stream also feeds a MediaStreamAudioSourceNode
+// yields a silent recording even though the Web Audio graph works — which
+// presents as a live level meter and empty files. Capturing from the graph
+// itself means the meter and the recording are provably the same signal: if
+// the bar moves, samples are arriving.
+
+let sharedStream = null;
+let engine = null;
+
+async function ensureEngine() {
+  if (sharedStream?.active && engine) return engine;
+  sharedStream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      ...(selectedDeviceId ? { deviceId: { exact: selectedDeviceId } } : {}),
+      channelCount: 1,
+      // Echo cancellation and noise suppression are tuned for phone calls: they
+      // gate quiet passages and colour the signal, which measured ~15-20 dB of
+      // attenuation here and would be scored as recogniser error rather than
+      // microphone error. A speech probe wants the rawest input available.
+      // AGC stays on to compensate for distance from a laptop mic.
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: true,
+    },
+  });
+  engine?.close();
+  engine = createEngine(sharedStream);
+  return engine;
+}
+
+function releaseEngine() {
+  engine?.close();
+  engine = null;
+  if (sharedStream) for (const t of sharedStream.getTracks()) t.stop();
+  sharedStream = null;
+}
+
+function createEngine(stream) {
+  const ctx = new AudioContext(); // native rate — never forced
+  ctx.resume();
+  const source = ctx.createMediaStreamSource(stream);
+
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 1024;
+  source.connect(analyser);
+
+  const processor = ctx.createScriptProcessor(4096, 1, 1);
+  let capturing = null;
+  processor.onaudioprocess = (e) => {
+    if (capturing) capturing.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+  };
+  source.connect(processor);
+
+  // A ScriptProcessorNode only runs when connected to the destination, but
+  // routing the microphone to the speakers would cause feedback — so it goes
+  // through a muted gain node.
+  const mute = ctx.createGain();
+  mute.gain.value = 0;
+  processor.connect(mute);
+  mute.connect(ctx.destination);
+
+  const data = new Uint8Array(analyser.fftSize);
+  let target = null;
+  let live = true;
+  (function tick() {
+    if (!live) return;
+    if (target) {
+      analyser.getByteTimeDomainData(data);
+      let peak = 0;
+      for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
+      // dBFS scale, not linear. On a linear meter a -20 dBFS signal still
+      // showed a healthy-looking bar, which is exactly how a 15-20 dB level
+      // problem stayed invisible. -50..0 dB maps to 0..100%.
+      const amp = peak / 128;
+      const db = amp > 0 ? 20 * Math.log10(amp) : -100;
+      target.style.width = Math.max(0, Math.min(100, ((db + 50) / 50) * 100)) + '%';
+    }
+    requestAnimationFrame(tick);
+  })();
+
+  return {
+    sampleRate: ctx.sampleRate,
+    setTarget(el) {
+      if (target && target !== el) target.style.width = '0%';
+      target = el;
+    },
+    startCapture() { capturing = []; },
+    stopCapture() {
+      const chunks = capturing ?? [];
+      capturing = null;
+      const total = chunks.reduce((n, c) => n + c.length, 0);
+      const flat = new Float32Array(total);
+      let at = 0;
+      for (const c of chunks) { flat.set(c, at); at += c.length; }
+      return flat;
+    },
+    close() {
+      live = false;
+      if (target) target.style.width = '0%';
+      processor.onaudioprocess = null;
+      try { source.disconnect(); processor.disconnect(); mute.disconnect(); } catch {}
+      ctx.close();
+    },
+  };
+}
+
+async function populateDevices() {
+  const select = document.getElementById('micDevice');
+  const devices = (await navigator.mediaDevices.enumerateDevices())
+    .filter((d) => d.kind === 'audioinput');
+  select.innerHTML = '<option value="">default input</option>';
+  for (const device of devices) {
+    const option = document.createElement('option');
+    option.value = device.deviceId;
+    option.textContent = device.label || 'input ' + device.deviceId.slice(0, 6);
+    if (device.deviceId === selectedDeviceId) option.selected = true;
+    select.append(option);
+  }
+}
+
+// ---- mic test -------------------------------------------------------------
+const micBtn = document.getElementById('micBtn');
+const micStatus = document.getElementById('micStatus');
+const micMeter = document.getElementById('micMeter');
+let micTesting = false;
+
+async function startMicTest() {
+  try {
+    await ensureEngine();
+  } catch (err) {
+    micStatus.innerHTML = '<span class="bad">could not open that input: ' + err.message +
+      '</span> — pick a different device above.';
+    return;
+  }
+  await populateDevices();
+  engine.setTarget(micMeter);
+  micTesting = true;
+  micBtn.textContent = 'Stop mic test';
+
+  const { label, rate, suspect } = describeTrack(sharedStream.getAudioTracks()[0]);
+  micStatus.innerHTML =
+    '<span class="' + (suspect ? 'bad' : 'ok') + '">listening</span> — ' + label +
+    ' @ ' + (rate || engine.sampleRate) + ' Hz' +
+    (suspect
+      ? ' <strong class="bad">— Bluetooth/HFP input. Switch to the built-in mic.</strong>'
+      : ' — talk, the bar should move.');
+}
+
+function stopMicTest() {
+  micTesting = false;
+  engine?.setTarget(null);
+  micBtn.textContent = 'Start mic test';
+}
+
+micBtn.addEventListener('click', () => (micTesting ? stopMicTest() : startMicTest()));
+
+document.getElementById('micDevice').addEventListener('change', async (e) => {
+  selectedDeviceId = e.target.value;
+  localStorage.setItem(DEVICE_KEY, selectedDeviceId);
+  const wasTesting = micTesting;
+  stopMicTest();
+  releaseEngine();
+  if (wasTesting) await startMicTest();
+  else micStatus.textContent = 'device changed — start the mic test to confirm it works';
+});
+
+// ---- clips ----------------------------------------------------------------
+let recordingClip = null;
+
+for (const clip of clips) {
+  const el = document.createElement('div');
+  el.className = 'clip';
+  const isErr = clip.kind === 'deliberate-error';
+  el.innerHTML =
+    '<span class="tag ' + (isErr ? 'err' : '') + '">' +
+      (isErr ? 'say it wrong, on purpose' : 'correct persian') + '</span>' +
+    '<p class="fa" dir="rtl" lang="fa">' + clip.saying + '</p>' +
+    '<p class="translit">' + clip.translit + '</p>' +
+    '<p class="en">' + clip.english + '</p>' +
+    (isErr
+      ? '<p class="warn"><strong>Read it exactly as written, mistake included.</strong> ' +
+        'Planted error: ' + clip.errorType + '. Do not correct it as you speak — the whole ' +
+        'point is to find out whether the transcript keeps the mistake.</p>'
+      : '') +
+    '<div class="row">' +
+      '<button class="rec">Record</button>' +
+      '<div class="meter"><i class="lvl"></i></div>' +
+      '<span class="status"></span>' +
+      '<audio controls hidden></audio>' +
+    '</div>';
+  container.append(el);
+
+  const btn = el.querySelector('.rec');
+  const status = el.querySelector('.status');
+  const player = el.querySelector('audio');
+  const lvl = el.querySelector('.lvl');
+  let startedAt = 0;
+  let timer = null;
+
+  async function begin() {
+    if (recordingClip) {
+      status.innerHTML = '<span class="bad">another clip is still recording</span>';
+      return;
+    }
+    try {
+      await ensureEngine();
+    } catch (err) {
+      status.innerHTML = '<span class="bad">mic unavailable: ' + err.message + '</span>';
+      return;
+    }
+
+    stopMicTest();
+    engine.setTarget(lvl);
+
+    const device = describeTrack(sharedStream.getAudioTracks()[0]);
+    if (device.suspect) {
+      status.innerHTML = '<span class="bad">' + device.label +
+        ' looks like a Bluetooth/HFP input — the word error rate would reflect the microphone, ' +
+        'not the recogniser.</span>';
+    }
+
+    engine.startCapture();
+    recordingClip = clip.id;
+    startedAt = Date.now();
+    btn.textContent = 'Stop';
+    btn.classList.add('active');
+    timer = setInterval(() => {
+      status.textContent = 'recording… ' + ((Date.now() - startedAt) / 1000).toFixed(1) + 's';
+    }, 100);
+  }
+
+  async function finish() {
+    clearInterval(timer);
+    const raw = engine.stopCapture();
+    const captureRate = engine.sampleRate;
+    engine.setTarget(null);
+    recordingClip = null;
+    btn.textContent = 'Re-record';
+    btn.classList.remove('active');
+
+    if (raw.length === 0) {
+      status.innerHTML = '<span class="bad">no audio captured — try again</span>';
+      return;
+    }
+
+    status.textContent = 'processing…';
+    const resampled = await resampleTo16k(raw, captureRate);
+    const rawPeak = peakOf(resampled);
+    if (rawPeak < SILENCE_PEAK) {
+      status.innerHTML = '<span class="bad">silent (peak ' + rawPeak.toFixed(4) +
+        ') — not saved. Check the input device in the mic test above.</span>';
+      return;
+    }
+
+    const { samples, gain } = normalize(resampled);
+    const quiet = rawPeak < 0.05
+      ? ' <strong class="bad">Input was very quiet — move closer to the mic.</strong>'
+      : '';
+    const wav = encodeWav(samples, TARGET_RATE);
+    player.src = URL.createObjectURL(wav);
+    player.hidden = false;
+    status.textContent = 'saving…';
+
+    const put = await fetch('/api/spike/save-recording?id=' + encodeURIComponent(clip.id), {
+      method: 'POST',
+      headers: { 'Content-Type': 'audio/wav' },
+      body: wav,
+    });
+
+    if (put.ok) {
+      const { bytes } = await put.json();
+      if (!el.classList.contains('saved')) { savedCount++; updateProgress(); }
+      el.classList.add('saved');
+      status.innerHTML = '<span class="ok">saved ' + clip.id + '.wav</span> — ' +
+        (samples.length / TARGET_RATE).toFixed(1) + 's, ' + (bytes / 1024).toFixed(0) + ' KB, ' +
+        'input ' + dbfs(rawPeak).toFixed(0) + ' dBFS' +
+        (gain > 1 ? ' (boosted ' + (20 * Math.log10(gain)).toFixed(0) + ' dB)' : '') + quiet;
+    } else {
+      status.innerHTML = '<span class="bad">save failed: ' + (await put.text()) + '</span>';
+    }
+  }
+
+  btn.addEventListener('click', () => {
+    if (recordingClip === clip.id) {
+      if (Date.now() - startedAt < 400) {
+        status.innerHTML = '<span class="bad">too short — keep talking a moment longer</span>';
+        return;
+      }
+      finish();
+    } else {
+      begin();
+    }
+  });
+}
+
+updateProgress();
+</script>
+</body>
+</html>

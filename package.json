@@ -6,10 +6,24 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test src/**/*.test.ts",
+    "spike:check": "tsx spike/check-credentials.ts",
+    "spike:tts": "tsx spike/tts-bakeoff.ts",
+    "spike:report": "tsx spike/tts-bakeoff.ts --report-only",
+    "spike:stt": "tsx spike/stt-probe.ts",
+    "spike:pron": "tsx spike/pronunciation-probe.ts",
+    "spike:homograph": "tsx spike/homograph-probe.ts",
+    "spike:instruct": "tsx spike/openai-instruction-probe.ts",
+    "spike:accent": "tsx spike/accent-probe.ts",
+    "spike:chatbench": "tsx spike/chat-bench.ts",
+    "spike:ttslatency": "tsx spike/tts-latency.ts",
+    "spike:conversation": "tsx spike/conversation-probe.ts"
   },
   "dependencies": {
     "next": "16.3.0",
+    "openai": "^7.4.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -18,9 +32,11 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
     "tailwindcss": "^4",
+    "tsx": "^4.23.11",
     "typescript": "^5"
   }
 }

@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# spike artifacts — generated audio, recordings, and rating exports
+/spike/out/
+/spike/recordings/
+
+# committed env template (the rest of .env* stays ignored)
+!.env.example

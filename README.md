@@ -1,36 +1,168 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Persian Practice
 
-## Getting Started
+A conversational Farsi tutor: you speak, it speaks back, and it teaches you to
+hold a conversation rather than to recognise flashcards.
 
-First, run the development server:
+The interesting part is not the app. It is that spoken Persian breaks most of the
+assumptions a voice pipeline is built on, and almost none of those breakages are
+visible until you measure them. This repository is currently the record of that
+measurement.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+---
+
+## Why Persian is hard for a voice pipeline
+
+**The writing system omits short vowels.** `کرم` is _kerm_ (worm), _kerem_
+(cream), or _karam_ (generosity) — identical letters, and the reader is expected
+to infer the vowels from context. Text-to-speech has to make the same inference,
+and one engine tested here never did: given fifteen ambiguous words in
+disambiguating sentences, it read the frequency-default **every single time**,
+including reading `مرد` as _mard_ (man) in a sentence that plainly meant _mord_
+(died). Past-tense verbs are core beginner grammar, not an edge case.
+
+**Speech recognition is trained to be helpful, which is the opposite of what a
+tutor needs.** A learner saying `من دیروز بازار می‌رم` — present tense where past
+is required — is producing exactly the signal the teaching engine exists to
+detect. A recogniser that quietly returns the grammatical form has erased the
+evidence before any teaching logic sees it. One provider tested here _inserted_ a
+copula the speaker had deliberately omitted.
+
+**The written language and the spoken language differ.** Iranians write `خانه`
+and say _khune_; write `نان` and say _nun_. A tutor that speaks correct literary
+Persian teaches something nobody says out loud.
+
+**Two varieties, one script.** Iranian Persian merged the consonants `ق` and `غ`;
+Afghan Dari keeps them apart. Iranian has _v_ where Dari has _w_, and lost the
+classical `ē`/`ō` vowels Dari preserves. A non-native ear cannot tell them apart —
+both sound like fluent Persian — so "does this voice sound right?" is not a
+question the person building the app can answer.
+
+---
+
+## How decisions get made here
+
+Every technical choice in this repository is attached to a measurement, and the
+negative results are written down as carefully as the positive ones. The pattern
+is consistent: state the question, design something that can answer it, run it,
+and let the result overturn the plan when it wants to.
+
+That has already happened twice.
+
+**A claim was refuted.** OpenAI's Persian voices are widely reported to carry an
+Afghan accent, and the initial vendor choice was made on that basis. A blind
+test — nine sentences, each targeting one phonological feature that separates
+Iranian from Dari, four voices, shuffled per sentence, rated by a native
+speaker — returned **Iranian on every marker for every voice**. The claim did not
+reproduce, the advantage was imaginary, and the vendor decision reversed.
+
+**An instinct was measured and found harmful.** Telling the speech model "this
+word means _worm_, pronounce it _kerm_" fixed 5 of 6 homographs. Adding the
+seemingly-stronger "…and do NOT pronounce it _kerem_" dropped it to 3 of 6,
+breaking two words the simpler instruction got right. Naming the wrong form
+appears to prime the model toward it.
+
+Findings live in [`spike/FINDINGS.md`](spike/FINDINGS.md), with the experiments
+that produced them in [`spike/`](spike/).
+
+---
+
+## What has been established
+
+|                    |                                                                        |
+| ------------------ | ---------------------------------------------------------------------- |
+| **Text-to-speech** | `gpt-4o-mini-tts`, voice `nova`                                        |
+| **Speech-to-text** | `gpt-4o-transcribe`, verbatim prompt mandatory                         |
+| **Register**       | Colloquial Tehrani, driven by the generated text rather than the voice |
+
+Three results worth stating on their own:
+
+**One prompt field is worth an 11× accuracy difference.** Unprompted,
+`gpt-4o-transcribe` falls out of Persian entirely and returns romanised or
+hallucinated Latin text — `michel dotrice war am theater bekannt` for
+`می‌شه لطفاً آروم‌تر صحبت کنید؟` — _despite_ `language: "fa"` being set
+explicitly. With a verbatim-transcription prompt, the same audio returns correct
+Persian: **44% word error rate → 4%**.
+
+**Context-blindness is a property of the engine, not the vendor.** On the
+homograph battery one engine scored 0/15 on the readings that require context,
+and 15/15 on the frequency-defaults — a perfectly clean split. The other reads
+for meaning and scored 5/6 on the same problem. That gap decided the stack.
+
+**Some things cannot be fixed at any accuracy.** A missing _ezafe_ is audible but
+leaves no trace in written Persian, so no transcript-based system can ever detect
+it. That bounds what the teaching engine can claim, and it is recorded as a
+ceiling rather than a bug.
+
+---
+
+## Architecture
+
+Next.js (App Router) and TypeScript, one process. Route handlers keep API keys
+server-side; there is no separate backend.
+
+```
+src/lib/
+  tts-provider.ts    provider interface + OpenAI and Azure implementations
+  stt-provider.ts    transcription arms, including the verbatim prompt
+  normalize.ts       Persian Unicode folding, tokenisation, word error rate
+  throttle.ts        request pacing; per-minute vs per-day limit classification
+spike/               the experiments, kept runnable
+docs/PHASE-1.md      the build plan
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The provider abstraction exists from the first commit rather than "eventually,"
+because voice quality was the axis most likely to force a vendor switch — and it
+did. Swapping engines was a one-line change.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+`normalize.ts` handles the things that silently corrupt Persian string
+comparison: ZWNJ (`نیم‌فاصله`), the Arabic-versus-Persian `ی`/`ي` and `ک`/`ك`
+code points, and four competing digit systems. Without it, strings a reader would
+call identical compare as different.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Running it
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+cp .env.example .env.local     # OPENAI_API_KEY
+npm install
+npm run spike:check            # verifies credentials, diagnoses failures
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The experiments are kept runnable rather than deleted, so they can be re-run when
+a model changes:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+npm run spike:tts          # blind voice comparison → spike/out/compare.html
+npm run spike:homograph    # short-vowel ambiguity battery
+npm run spike:accent       # Iranian vs Dari discrimination test
+npm run spike:instruct     # can instructions fix pronunciation?
+npm run spike:stt          # transcription accuracy + error preservation
+```
 
-## Deploy on Vercel
+Each writes a self-contained HTML page with audio and a rating interface, because
+the results need a native speaker and terminals cannot render Persian anyway —
+most have no bidirectional text support, so right-to-left text appears reversed.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run typecheck && npm test && npm run lint
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Status
+
+Phase 0 — feasibility — is complete and passed on both gates: a voice good enough
+to teach pronunciation with, and transcripts that preserve learner errors well
+enough to teach from.
+
+Phase 1 builds the conversation loop and measures whether it feels like a
+conversation. The plan is in [`docs/PHASE-1.md`](docs/PHASE-1.md), including the
+browser-audio findings, prompts, and the known ceilings.
+
+Deliberately not built yet: database, accounts, learner model, curriculum,
+spaced repetition, pronunciation scoring. The schema in the original brief has
+already been invalidated once by a finding about which errors are detectable at
+all, so it gets designed after Phase 1 rather than before.
+
+claude --resume 0bdb8cb5-6b83-441b-b73c-16bef8b4d5b5
