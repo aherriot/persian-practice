@@ -116,6 +116,44 @@ export default function DesignSystemPage() {
       </section>
 
       <section className="mx-auto max-w-3xl px-6 py-16">
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Card</h2>
+        <p className="mt-2 text-sm text-ink/60">
+          The same niche, used generically — not just for color swatches. <code className="text-xs">niche</code> is
+          optional: with it, whatever you pass becomes the focal object resting in the opening;
+          without it, the card is just a quiet arched surface for text content.
+        </p>
+        <div className="mt-6 grid gap-5 sm:grid-cols-3">
+          <Card>
+            <p className="text-center text-sm font-medium text-ink">No niche content</p>
+            <p className="mt-1 text-center text-xs text-ink/60">
+              Just the arch and frame, carrying ordinary text — a quiet surface rather than a
+              display case.
+            </p>
+          </Card>
+          <Card
+            niche={
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-cobalt text-lg font-semibold text-sand">
+                12
+              </div>
+            }
+          >
+            <p className="text-center text-sm font-medium text-ink">Due for review</p>
+            <p className="text-center text-xs text-ink/50">items waiting</p>
+          </Card>
+          <Card
+            niche={
+              <div className="flex h-14 w-14 items-center justify-center rounded-full bg-terracotta text-2xl text-sand">
+                ✓
+              </div>
+            }
+          >
+            <p className="text-center text-sm font-medium text-ink">Placement complete</p>
+            <p className="text-center text-xs text-ink/50">level B1</p>
+          </Card>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-3xl px-6 py-16">
         <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Button</h2>
         <p className="mt-2 text-sm text-ink/60">
           Arch-top silhouette, girih pattern inlaid at low opacity, a double-line tile frame (gold
