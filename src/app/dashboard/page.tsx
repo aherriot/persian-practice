@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth/session";
 import { signOut } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
+import { TopicPanel } from "./TopicPanel";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -45,9 +46,8 @@ export default async function DashboardPage() {
       >
         Review due items
       </Link>
-      <p className="text-sm text-gray-400">
-        The topic-driven conversation loop lands in the next milestone.
-      </p>
+
+      <TopicPanel />
     </main>
   );
 }

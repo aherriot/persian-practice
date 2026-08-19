@@ -7,6 +7,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   real,
@@ -139,6 +140,16 @@ export const conversations = pgTable("Conversation", {
     .references(() => users.id, { onDelete: "cascade" }),
   topicId: text("topicId").references(() => topics.id, { onDelete: "set null" }),
   mode: text("mode").$type<"topic" | "review" | "placement">().notNull(),
+  // Generated once at conversation start from the free-text topic, then reused
+  // every turn — regenerating it per turn would waste tokens and drift.
+  scenario: jsonb("scenario").$type<{
+    id: string;
+    title: string;
+    goal: string;
+    situation: string;
+    opener: string;
+    openerTransliteration: string;
+  }>(),
   startedAt: timestampDefaultNow("startedAt"),
   endedAt: timestamp("endedAt", { precision: 3 }),
 });
@@ -152,6 +163,9 @@ export const turns = pgTable(
       .references(() => conversations.id, { onDelete: "cascade" }),
     role: text("role").$type<"user" | "assistant">().notNull(),
     content: text("content").notNull(),
+    // Latin transliteration, assistant turns only — shown on demand for a
+    // learner struggling to read the script, so it doesn't need recomputing.
+    transliteration: text("transliteration"),
     seq: integer("seq").notNull(),
     createdAt: createdAt(),
   },

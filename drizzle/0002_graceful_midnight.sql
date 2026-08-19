@@ -1,0 +1,1 @@
+ALTER TABLE "Turn" ADD COLUMN "transliteration" text;

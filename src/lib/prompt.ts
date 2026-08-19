@@ -21,6 +21,8 @@ export type Scenario = {
   situation: string;
   /** Spoken by the tutor to open, so the learner is not staring at silence. */
   opener: string;
+  /** Latin transliteration of `opener`. Optional — only the dynamic (M3+) engine sets it. */
+  openerTransliteration?: string;
 };
 
 export const LUNCH_SCENARIO: Scenario = {
@@ -179,3 +181,163 @@ export function buildMessages(
 export const REGISTER_REMINDER =
   "Reminder: colloquial spoken Tehrani only (خونه not خانه, می‌رم not می‌روم), " +
   "one or two short sentences, stay in character, recast mistakes without explaining them.";
+
+/**
+ * Dynamic conversation engine (Phase 2 / M3).
+ *
+ * `systemPrompt()` above is single-scenario and left untouched — the parked
+ * hold-to-talk demo (`src/app/page.tsx`, `/api/chat`) still depends on it
+ * exactly as measured in Phase 1. This is a parallel builder for the
+ * topic-driven conversation loop: same register/recast pedagogy, but the
+ * scenario is generated per-conversation from free text instead of hardcoded,
+ * and due SRS items get woven into the prompt rather than a fixed goal.
+ */
+
+/** Used for `mode: "review"` conversations, which have no topic-derived scenario. */
+export const REVIEW_SITUATION: Scenario = {
+  id: "review",
+  title: "Catching up",
+  goal: "Have a relaxed catch-up conversation",
+  situation:
+    "You are a friend catching up with the learner over tea. Keep it warm and casual — " +
+    "ask what's new, react to what they say, and let the conversation wander naturally.",
+  opener: "سلام! چه خبرا؟",
+  openerTransliteration: "salâm! che khabarâ?",
+};
+
+export type PromptItem = {
+  /** Small integer scoped to this turn's offered-items list, not items.id — avoids UUID hallucination. */
+  ref: number;
+  persian: string;
+  gloss: string;
+};
+
+export type ConversationContext = {
+  scenario: Scenario;
+  /** e.g. "A1", "B2", or null before placement. */
+  level: string | null;
+  /** SRS-due or newly-introduced items to try to weave in this turn. */
+  dueItems: PromptItem[];
+  /** Items the learner has recently been corrected on, for gentle reinforcement. */
+  recentMistakes: { persian: string; gloss: string }[];
+};
+
+function levelDescription(level: string | null): string {
+  if (!level) return "unknown — treat them as a beginner until they show otherwise";
+  return level;
+}
+
+export function buildConversationSystemPrompt(
+  ctx: ConversationContext,
+  options: PromptOptions = {},
+): string {
+  const maxSentences = options.maxSentences ?? 2;
+  const lengthRule =
+    maxSentences === 1
+      ? "- Keep replies to ONE short sentence. This is speech, not prose."
+      : `- Keep replies SHORT — at most ${maxSentences} sentences. This is speech, not prose.`;
+
+  const itemsSection =
+    ctx.dueItems.length === 0
+      ? []
+      : [
+          "",
+          "## Items to work in",
+          "",
+          "Try to naturally use or prompt these in the next turn or two — weave them into",
+          "the conversation, don't force them or turn this into a vocab drill:",
+          "",
+          ...ctx.dueItems.map((item) => `  [${item.ref}] ${item.persian} (${item.gloss})`),
+        ];
+
+  const mistakesSection =
+    ctx.recentMistakes.length === 0
+      ? []
+      : [
+          "",
+          "## Recently struggled with",
+          "",
+          "The learner has recently been corrected on these — no need to quiz them, but if a",
+          "natural chance comes up to reinforce one, take it:",
+          "",
+          ...ctx.recentMistakes.map((m) => `  ${m.persian} (${m.gloss})`),
+        ];
+
+  return [
+    `You are a patient Persian (Farsi) tutor role-playing a scenario. ${ctx.scenario.situation}`,
+    "",
+    "## Register — this is the most important rule",
+    "",
+    "Speak COLLOQUIAL SPOKEN TEHRANI, the Persian Iranians actually use out loud,",
+    "never literary or written Persian. Use these forms:",
+    "",
+    ...COLLOQUIAL_FORMS.map(([spoken, written]) => `  ${spoken}   not   ${written}`),
+    "",
+    "Write it the way Iranians text each other. If a sentence would look correct in a",
+    "textbook but stiff out loud, rewrite it.",
+    "",
+    "## How to talk",
+    "",
+    lengthRule,
+    "- Stay in character within the scenario — you are not a chatbot discussing Persian.",
+    `- Match the learner's level (${levelDescription(ctx.level)}): simple vocabulary and`,
+    "  short sentences for a beginner, more range for a stronger learner.",
+    "- Ask one question at a time so the learner always has something to answer.",
+    ...itemsSection,
+    ...mistakesSection,
+    "",
+    "## Mistakes — recast, do not correct",
+    "",
+    "When the learner gets something wrong, DO NOT stop to explain. Reply naturally",
+    "using the correct form, so they hear it modelled, and keep the conversation going.",
+    "",
+    "  Learner: دیروز بازار می‌رم",
+    "  You:     آها، دیروز رفتی بازار! چی خریدی؟",
+    "",
+    "Corrections are collected after the conversation, not during it. The only",
+    "exception is if the learner explicitly asks.",
+    "",
+    "## If the learner struggles",
+    "",
+    "Simplify your Persian rather than switching to English. Use easier words, shorter",
+    "sentences, repeat yourself. Only use English if they ask for it directly, or if",
+    "they are clearly stuck after two attempts.",
+    "",
+    "Honour direct requests: slower, repeat that, what does that word mean, say it in",
+    "English.",
+    "",
+    "## Reporting item usage",
+    "",
+    "For every item listed under \"Items to work in\" above, report in `items_used`",
+    "whether the learner's PRECEDING message used it correctly (\"correct\"), used it but",
+    "got it wrong so you recast it (\"recast\"), or didn't come up at all (\"not_attempted\").",
+    "Only include refs from the list above — never invent a ref number.",
+    "",
+    "## Transliteration",
+    "",
+    "Also fill in `transliteration`: a Latin transliteration of your `reply` (e.g. \"salâm,",
+    "chetori?\"), for a learner who taps a button to reveal it because they're struggling to",
+    "read the script. This is a separate field, not part of `reply` itself.",
+    "",
+    "## Never",
+    "",
+    "- Never write transliteration or English translations INSIDE `reply` unless asked —",
+    "  that's what the `transliteration` field and the learner's button are for.",
+    "- Never break character to comment on their grammar.",
+    `- Never produce more than about ${maxSentences * 15} words in a turn.`,
+    "",
+    "## Goal for this conversation",
+    "",
+    ctx.scenario.goal,
+  ].join("\n");
+}
+
+export type TurnItemEvent = {
+  ref: number;
+  outcome: "correct" | "recast" | "not_attempted";
+};
+
+export type StructuredTurnReply = {
+  reply: string;
+  items_used: TurnItemEvent[];
+};
