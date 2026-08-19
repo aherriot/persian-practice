@@ -1,0 +1,136 @@
+import { GeometricPattern } from "@/components/GeometricPattern";
+import { Button } from "@/components/Button";
+import { Card } from "@/components/Card";
+
+const SWATCHES = [
+  { name: "sand", var: "--color-sand", role: "background" },
+  { name: "paper", var: "--color-paper", role: "surface" },
+  { name: "ink", var: "--color-ink", role: "text" },
+  { name: "cobalt", var: "--color-cobalt", role: "primary accent" },
+  { name: "turquoise", var: "--color-turquoise", role: "decorative / large only" },
+  { name: "turquoise-dark", var: "--color-turquoise-dark", role: "text-safe turquoise" },
+  { name: "terracotta", var: "--color-terracotta", role: "accent" },
+  { name: "gold", var: "--color-gold", role: "decorative only" },
+  { name: "crimson", var: "--color-crimson", role: "emphasis / error" },
+];
+
+export default function DesignSystemPage() {
+  return (
+    <main className="min-h-screen">
+      {/*
+        bg-sand here is load-bearing, not decorative: it blocks the fixed
+        BrickPattern (page background, see layout.tsx) from showing through
+        the gaps in GeometricPattern's linework. The two patterns must never
+        composite together — any section using GeometricPattern needs an
+        opaque background first. See docs/design-system.md.
+      */}
+      <section className="relative overflow-hidden border-b border-ink/10 bg-sand px-6 py-20">
+        <GeometricPattern id="hero-pattern" className="absolute inset-0" opacity={0.4} />
+        {/*
+          Text never sits directly on the pattern above ~15-20% opacity — the
+          lattice lines run straight through letterforms and wreck legibility.
+          This glass panel (translucent sand + blur) is the fix: see
+          docs/design-system.md, "text over pattern."
+        */}
+        <div className="relative mx-auto max-w-2xl rounded-2xl bg-sand/75 px-8 py-6 text-center backdrop-blur-sm">
+          <h1
+            className="text-4xl font-medium tracking-tight text-ink sm:text-5xl"
+            style={{ fontFamily: "var(--font-display-latin)" }}
+          >
+            Persian Architecture
+          </h1>
+          <p className="mt-3 text-lg text-ink/70">
+            Color, type, and pattern tokens — a working prototype, not yet final.
+          </p>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-3xl px-6 py-16">
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Color</h2>
+        <p className="mt-2 text-sm text-ink/60">
+          Each swatch sits inside a Card — modeled on the arched niches (taghche) at the
+          Tabātabāei House in Kashan: a two-centered pointed arch, a carved double-line eyebrow
+          molding, a scalloped crown medallion, and relief-textured stone inside the opening.
+        </p>
+        <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3">
+          {SWATCHES.map((s) => (
+            <Card
+              key={s.name}
+              niche={
+                <div
+                  className="h-16 w-16 rounded-full shadow-md ring-2 ring-paper"
+                  style={{ background: `var(${s.var})`, boxShadow: "0 4px 10px -2px rgba(42,29,22,0.35)" }}
+                />
+              }
+            >
+              <p className="text-center font-mono text-xs text-ink">{s.name}</p>
+              <p className="text-center text-xs text-ink/50">{s.role}</p>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-3xl px-6 py-16">
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Typography</h2>
+        <div className="mt-6 flex flex-col gap-8">
+          <div>
+            <p className="mb-1 text-xs text-ink/50">Display — Latin (Cinzel) / Persian (Noto Kufi Arabic)</p>
+            <p className="text-3xl font-medium" style={{ fontFamily: "var(--font-display-latin)" }}>
+              Speak like a Tehrani
+            </p>
+            <p dir="rtl" lang="fa" className="mt-1 text-3xl font-medium" style={{ fontFamily: "var(--font-display-fa)" }}>
+              مثل یک تهرونی حرف بزن
+            </p>
+          </div>
+          <div>
+            <p className="mb-1 text-xs text-ink/50">Body — Latin (Manrope) / Persian (Vazirmatn)</p>
+            <p className="max-w-md text-base" style={{ fontFamily: "var(--font-body-latin)" }}>
+              A conversational tutor that adapts to your level, weaves in new vocabulary, and
+              speaks with a real Tehrani accent.
+            </p>
+            <p dir="rtl" lang="fa" className="mt-1 max-w-md text-base" style={{ fontFamily: "var(--font-body-fa)" }}>
+              یه معلم مکالمه که با سطح تو تنظیم می‌شه، کلمه‌های جدید یاد می‌ده، و با لهجه واقعی تهرونی حرف می‌زنه.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-ink/10 bg-ink/10 px-6 py-16">
+        <div className="mx-auto max-w-3xl">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Pattern</h2>
+          <p className="mt-2 text-sm text-ink/60">
+            Girih star-and-cross lattice — the signature motif. Shown here at three densities.
+          </p>
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <div className="relative h-40 overflow-hidden rounded-lg border border-ink/10 bg-sand">
+              <GeometricPattern id="pat-full" opacity={1} className="absolute inset-0" />
+            </div>
+            <div className="relative h-40 overflow-hidden rounded-lg border border-ink/10 bg-sand">
+              <GeometricPattern id="pat-mid" opacity={0.4} className="absolute inset-0" />
+            </div>
+            <div className="relative h-40 overflow-hidden rounded-lg border border-ink/10 bg-sand">
+              <GeometricPattern id="pat-subtle" opacity={0.1} className="absolute inset-0" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-3xl px-6 py-16">
+        <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Button</h2>
+        <p className="mt-2 text-sm text-ink/60">
+          Arch-top silhouette, girih pattern inlaid at low opacity, a double-line tile frame (gold
+          inner border, ink outer ring with a sand gap). Tab to it to see the focus ring; the
+          pattern brightens on hover.
+        </p>
+        <div className="mt-6 flex flex-wrap items-center gap-6">
+          <Button variant="primary">Start a conversation</Button>
+          <Button variant="secondary">Take the placement test</Button>
+          <Button variant="ghost">Review due items</Button>
+          <Button variant="primary" disabled>
+            Unavailable
+          </Button>
+        </div>
+      </section>
+    </main>
+  );
+}
