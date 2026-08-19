@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { conversations, topics, turns, users } from "@/lib/db/schema";
@@ -6,6 +6,32 @@ import { generateScenario } from "@/lib/conversation";
 import { REVIEW_SITUATION } from "@/lib/prompt";
 
 export const runtime = "nodejs";
+
+/** List past conversations, most recently active first, for the "jump back in" view. */
+export async function GET() {
+  const user = await requireUser();
+
+  const rows = await db
+    .select({
+      id: conversations.id,
+      mode: conversations.mode,
+      scenarioTitle: sql<string | null>`${conversations.scenario}->>'title'`,
+      topicText: topics.rawText,
+      startedAt: conversations.startedAt,
+      endedAt: conversations.endedAt,
+      turnCount: sql<number>`count(${turns.id})`,
+      lastActivityAt: sql<string | null>`max(${turns.createdAt})`,
+      lastMessage: sql<string | null>`(array_agg(${turns.content} order by ${turns.seq} desc))[1]`,
+    })
+    .from(conversations)
+    .leftJoin(turns, eq(turns.conversationId, conversations.id))
+    .leftJoin(topics, eq(topics.id, conversations.topicId))
+    .where(eq(conversations.userId, user.id))
+    .groupBy(conversations.id, topics.rawText)
+    .orderBy(desc(sql`max(${turns.createdAt})`));
+
+  return Response.json({ conversations: rows });
+}
 
 export async function POST(request: Request) {
   const user = await requireUser();

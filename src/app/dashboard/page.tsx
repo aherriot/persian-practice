@@ -5,6 +5,7 @@ import { signOut } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { TopicPanel } from "./TopicPanel";
+import { ConversationHistory } from "./ConversationHistory";
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -46,6 +47,8 @@ export default async function DashboardPage() {
       >
         Review due items
       </Link>
+
+      <ConversationHistory />
 
       <TopicPanel />
     </main>
