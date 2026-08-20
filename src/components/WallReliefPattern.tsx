@@ -38,7 +38,7 @@ export function WallReliefPattern({
   id,
   size = 46,
   color = "var(--color-ink)",
-  opacity = 0.16,
+  opacity = 0.09,
   className,
 }: WallReliefPatternProps) {
   const half = size / 2;

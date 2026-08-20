@@ -45,7 +45,16 @@ export default function DesignSystemPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-3xl px-6 py-16">
+      {/*
+        Every text-bearing section below sits on an opaque bg-paper panel —
+        not decorative, load-bearing: without it, body text sits directly on
+        the page's WallReliefPattern background and the lattice lines run
+        through the letterforms (this is the bug the "Typography" section
+        shipped with — see docs/design-system.md, "text needs a quiet
+        surface"). Only the hero (own translucent scrim) and the "Pattern"
+        showcase (deliberately demonstrating the pattern itself) are exempt.
+      */}
+      <section className="mx-auto max-w-3xl bg-paper px-6 py-16">
         <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Color</h2>
         <p className="mt-2 text-sm text-ink/60">
           Each swatch sits inside a Card — modeled on the arched niches (taghche) at the
@@ -70,7 +79,7 @@ export default function DesignSystemPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-3xl px-6 py-16">
+      <section className="mx-auto max-w-3xl bg-paper px-6 py-16">
         <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Typography</h2>
         <div className="mt-6 flex flex-col gap-8">
           <div>
@@ -115,7 +124,7 @@ export default function DesignSystemPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-3xl px-6 py-16">
+      <section className="mx-auto max-w-3xl bg-paper px-6 py-16">
         <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Card</h2>
         <p className="mt-2 text-sm text-ink/60">
           The same niche, used generically — not just for color swatches. <code className="text-xs">niche</code> is
@@ -153,7 +162,7 @@ export default function DesignSystemPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-3xl px-6 py-16">
+      <section className="mx-auto max-w-3xl bg-paper px-6 py-16">
         <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Button</h2>
         <p className="mt-2 text-sm text-ink/60">
           Arch-top silhouette, girih pattern inlaid at low opacity, a double-line tile frame (gold
