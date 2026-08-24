@@ -1,4 +1,6 @@
 import { GeometricPattern } from "@/components/GeometricPattern";
+import { WallReliefPattern } from "@/components/WallReliefPattern";
+import { FloralRelief } from "@/components/FloralRelief";
 import { Button } from "@/components/Button";
 import { Card } from "@/components/Card";
 
@@ -16,7 +18,25 @@ const SWATCHES = [
 
 export default function DesignSystemPage() {
   return (
-    <main className="min-h-screen">
+    <main className="relative z-0 min-h-screen bg-sand">
+      {/*
+        Swaps this page's background from layout.tsx's fixed WallReliefPattern
+        to FloralRelief, to preview the new pattern at real page scale. Same
+        technique as layout.tsx: fixed + negative z-index, with bg-sand on
+        <main> itself so it fully overrides (not layers with) the pattern
+        underneath in body — see the "never layer" note on both pattern
+        components.
+
+        z-0 (not just `relative`) is load-bearing here: without an explicit
+        z-index, <main> doesn't form its own stacking context, so the
+        negative-z FloralRelief below escapes to the root stacking context
+        and paints *behind* <main>'s own bg-sand instead of on top of it —
+        this is unlike layout.tsx's <body>, which gets a CSS special case
+        (its background propagates to the canvas) that WallReliefPattern
+        doesn't need to fight. Drop z-0 and the pattern silently disappears.
+      */}
+      <FloralRelief id="page-bg-floral" className="pointer-events-none fixed inset-0 -z-10" />
+
       {/*
         bg-sand here is load-bearing, not decorative: it blocks the fixed
         BrickPattern (page background, see layout.tsx) from showing through
@@ -58,8 +78,9 @@ export default function DesignSystemPage() {
         <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Color</h2>
         <p className="mt-2 text-sm text-ink/60">
           Each swatch sits inside a Card — modeled on the arched niches (taghche) at the
-          Tabātabāei House in Kashan: a two-centered pointed arch, a carved double-line eyebrow
-          molding, a scalloped crown medallion, and relief-textured stone inside the opening.
+          Tabātabāei House in Kashan: a single round-topped arch cut into the wall, its own
+          outline reading as a recess through shading and a carved-edge stroke rather than
+          applied decoration.
         </p>
         <div className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-3">
           {SWATCHES.map((s) => (
@@ -119,6 +140,28 @@ export default function DesignSystemPage() {
             </div>
             <div className="relative h-40 overflow-hidden rounded-lg border border-ink/10 bg-sand">
               <GeometricPattern id="pat-subtle" opacity={0.1} className="absolute inset-0" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="border-t border-ink/10 bg-ink/10 px-6 py-16">
+        <div className="mx-auto max-w-3xl">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-ink/50">Wall texture</h2>
+          <p className="mt-2 text-sm text-ink/60">
+            Two quiet, single-color background textures for large surfaces — never accents, always
+            behind an opaque panel for text. Girih lattice (WallReliefPattern) and eslimi scrolling
+            floral (FloralRelief) are the same subtle-relief treatment applied to Persian
+            architecture&apos;s two ornament families.
+          </p>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className="relative h-40 overflow-hidden rounded-lg border border-ink/10 bg-sand">
+              <WallReliefPattern id="wall-showcase" opacity={0.35} className="absolute inset-0" />
+              <p className="absolute bottom-2 left-2 font-mono text-xs text-ink/50">WallReliefPattern</p>
+            </div>
+            <div className="relative h-40 overflow-hidden rounded-lg border border-ink/10 bg-sand">
+              <FloralRelief id="floral-showcase" opacity={0.35} className="absolute inset-0" />
+              <p className="absolute bottom-2 left-2 font-mono text-xs text-ink/50">FloralRelief</p>
             </div>
           </div>
         </div>
