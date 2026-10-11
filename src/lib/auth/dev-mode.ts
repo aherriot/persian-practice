@@ -10,7 +10,7 @@
  * we're on Vercel we trust `VERCEL_ENV`; off Vercel (local, CI) we fall back to
  * `NODE_ENV`.
  *
- * Edge-safe (only reads env vars) so it can be imported from the middleware
+ * Edge-safe (only reads env vars) so it can be imported from the proxy
  * config, Node-runtime auth config, and server components alike.
  */
 function isRealProduction(): boolean {

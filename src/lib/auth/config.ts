@@ -1,11 +1,11 @@
 import type { NextAuthConfig } from "next-auth";
 
 /**
- * Edge-safe base config. Contains NO database adapter (the Drizzle adapter +
- * Neon driver are Node-only) and no providers — so it can run in the Next.js
- * middleware (Edge runtime). The full config in `./index.ts` spreads this and
- * adds the adapter + providers for the Node runtime (API route, server
- * actions). This is the Auth.js "split config" pattern for Next.js middleware.
+ * Lightweight base config with NO database adapter and no providers, so the
+ * Next.js proxy (`src/proxy.ts`) can authorize every matched request without
+ * loading the DB driver. The full config in `./index.ts` spreads this and adds
+ * the adapter + providers (API route, server actions). This is the Auth.js
+ * "split config" pattern.
  */
 export const authConfig = {
   providers: [],
@@ -15,7 +15,7 @@ export const authConfig = {
   },
   session: {
     // JWT strategy is required because (a) the dev Credentials provider only
-    // works with JWT sessions, and (b) middleware can then authorize from the
+    // works with JWT sessions, and (b) the proxy can then authorize from the
     // cookie without a DB round-trip. The email magic-link flow still uses the
     // adapter for verification tokens + user creation.
     strategy: "jwt",
@@ -23,10 +23,10 @@ export const authConfig = {
     updateAge: 24 * 60 * 60, // 1 day
   },
   callbacks: {
-    // Runs in middleware for every matched request.
+    // Runs in the proxy for every matched request.
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = Boolean(auth?.user);
-      const protectedPrefixes = ["/dashboard", "/conversation", "/placement", "/review", "/topics"];
+      const protectedPrefixes = ["/dashboard"];
       const isProtected = protectedPrefixes.some((p) => nextUrl.pathname.startsWith(p));
 
       if (!isProtected) return true;
