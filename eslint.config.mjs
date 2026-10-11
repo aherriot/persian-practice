@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Parked code, kept for reference only — see research/conversation-v1/README.md.
+    "research/**",
   ]),
 ]);
 

@@ -18,7 +18,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import dotenv from "dotenv";
 
-import { LUNCH_SCENARIO, REGISTER_REMINDER, systemPrompt } from "../src/lib/prompt.ts";
+import { LUNCH_SCENARIO, REGISTER_REMINDER, systemPrompt } from "../research/conversation-v1/src/lib/prompt.ts";
 import { SELECTED_TTS } from "../src/lib/tts-provider.ts";
 import { createThrottle, isDailyQuota, isRateLimit, sleep } from "../src/lib/throttle.ts";
 

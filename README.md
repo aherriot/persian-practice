@@ -160,9 +160,14 @@ Phase 1 builds the conversation loop and measures whether it feels like a
 conversation. The plan is in [`docs/PHASE-1.md`](docs/PHASE-1.md), including the
 browser-audio findings, prompts, and the known ceilings.
 
-Deliberately not built yet: database, accounts, learner model, curriculum,
-spaced repetition, pronunciation scoring. The schema in the original brief has
-already been invalidated once by a finding about which errors are detectable at
-all, so it gets designed after Phase 1 rather than before.
+Phase 1 was built as a free, topic-driven conversation with an LLM tutor, plus a
+placement test and flashcard review. That teaching approach has been parked in
+[`research/conversation-v1/`](research/conversation-v1/README.md) — frozen, not
+compiled, kept for reference.
+
+The app is now being rebuilt around a deterministic lesson engine: very simple
+themed conversations, one new word at a time, quizzes on words, phrases and
+grammar, spaced repetition, and a built-in reference. Accounts, the database,
+the TTS/STT stack, the SM-2 engine and the design system carry over.
 
 claude --resume 0bdb8cb5-6b83-441b-b73c-16bef8b4d5b5

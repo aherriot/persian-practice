@@ -22,7 +22,7 @@ import path from "node:path";
 import dotenv from "dotenv";
 
 import { SCRIPT, type ScriptedTurn } from "./conversation-script.ts";
-import { buildMessages, type ChatTurn } from "../src/lib/prompt.ts";
+import { buildMessages, type ChatTurn } from "../research/conversation-v1/src/lib/prompt.ts";
 import { flagsFor, scanRegister, type RegisterScan } from "../src/lib/register.ts";
 import { createThrottle, isDailyQuota, isRateLimit, sleep } from "../src/lib/throttle.ts";
 
