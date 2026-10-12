@@ -194,6 +194,8 @@ export const NEW_WORD = "NEW";
 export type ExpansionRequest = {
   /** Words the learner knows, which the teaching sentences are built from. */
   known: Lexeme[];
+  /** The rest of what they know, when that is too much to list in full: not to be taught again. */
+  alsoKnown: Lexeme[];
   /** Words already in the course but not yet met; not to be taught again and not usable in sentences. */
   upcoming: Lexeme[];
   patterns: Set<string>;
@@ -214,7 +216,7 @@ export async function draftExpansion(request: ExpansionRequest): Promise<Expansi
     });
   const usedForms = new Set(request.known.flatMap(allowedForms).filter((form) => form !== "base"));
 
-  const system = `You plan the next steps for an adult learning spoken Tehrani Persian. They know the words listed and are ready for more. ${REGISTER}
+  const system = `You plan the next steps for an adult learning spoken Tehrani Persian. They know the words listed${request.alsoKnown.length > 0 ? ", and many more besides," : ""} and are ready for more. ${REGISTER}
 
 Choose the new words that would let them say the most new things, in the order they should be learned. Push them forward:
 - Do not just add more nouns of a kind they already have. Prefer what opens up new sentences: verbs they lack, the verbs they have in persons and tenses they lack (each inflected form is its own word: "I bought", "you want", "he has"), question words, connectors (but, because, or), words for time, place, quantity and feeling, and everyday set phrases.
@@ -225,7 +227,7 @@ For each new word write the entry:
 ${WORD_FIELDS}
 
 And one sentence that introduces it:
-- It uses the new word exactly once, written as the id "${NEW_WORD}", and otherwise ONLY words the learner knows, by id. Never any other word.
+- It uses the new word exactly once, written as the id "${NEW_WORD}", and otherwise ONLY words from the list that have an id, by id. Never any other word.
 - A word may only take the forms listed for it; the new word is always "base".${[...usedForms].map((form) => `\n  - "${form}": ${FORM_HELP[form as Exclude<Form, "base">]}`).join("")}
 - 2 to 6 words, natural, something a person would really say, and clear enough that the new word's meaning shows.
 - kind: "statement"${request.patterns.has("question") ? ', "yes-no-question" (rising intonation)' : ""} or "wh-question" (only with a question word).
@@ -235,7 +237,7 @@ If no natural sentence can be made for a word with what they know, choose a diff
 
   const user = `Words the learner knows (id — Persian — pronunciation — meaning — forms allowed):
 ${request.known.map((w) => `${w.id} — ${w.fa} — ${w.translit} — ${w.gloss} — ${allowedForms(w).join(", ")}`).join("\n")}
-
+${request.alsoKnown.length > 0 ? `\nThey also know these (do not teach, do not use):\n${request.alsoKnown.map((w) => w.fa).join("، ")}\n` : ""}
 Already in the course, coming later (do not teach, do not use):
 ${request.upcoming.map((w) => `${w.fa} (${w.gloss})`).join(", ") || "(none)"}
 

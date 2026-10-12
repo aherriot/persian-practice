@@ -119,6 +119,13 @@ export async function loadExamples(userId: string, target: Target, limit: number
     .limit(limit);
 }
 
+/** How many of the learner's sentences use each word. `among` narrows which sentences count. */
+export async function loadWordUses(userId: string, among: SQL = visibleSentence(userId)): Promise<Map<string, number>> {
+  const word = sql<string>`unnest(${sentences.lexemeIds})`;
+  const rows = await db.select({ id: word, uses: sql<number>`count(*)::int` }).from(sentences).where(among).groupBy(word);
+  return new Map(rows.map((row) => [row.id, row.uses]));
+}
+
 /**
  * The learner's sentences made of exactly the same words as one of `wordSets`:
  * all a new sentence can be a repeat of, so the rest need not be read.

@@ -8,8 +8,9 @@ import { assembleSentence, type Assembled } from "./assemble";
 import { draftSentences, reviewSentences } from "./author";
 import { sentenceClip, sentenceText } from "./plan";
 import { isFluent, measureProgress } from "./progress";
-import { allIn, knownIds, loadCourse, loadKnowledge, loadSameWords, textArray, visibleSentence } from "./store";
+import { allIn, knownIds, loadCourse, loadKnowledge, loadSameWords, loadWordUses, textArray, visibleSentence } from "./store";
 import type { Sentence } from "./types";
+import { workingVocabulary } from "./vocabulary";
 
 /** Below this many unseen generated sentences, more are written. */
 const MIN_UNSEEN = 6;
@@ -49,14 +50,6 @@ const usable = (userId: string) =>
     ),
     allIn(sentences.patternIds, knownIds(userId, "pattern")),
   )!;
-
-/** The learner's words with the fewest usable sentences, fewest first. */
-async function leastCovered(userId: string, wordIds: string[]): Promise<string[]> {
-  const word = sql<string>`unnest(${sentences.lexemeIds})`;
-  const rows = await db.select({ id: word, uses: sql<number>`count(*)::int` }).from(sentences).where(usable(userId)).groupBy(word);
-  const uses = new Map(rows.map((row) => [row.id, row.uses]));
-  return [...wordIds].sort((a, b) => (uses.get(a) ?? 0) - (uses.get(b) ?? 0));
-}
 
 const running = new Set<string>();
 
@@ -101,7 +94,10 @@ export async function topUpSentences(userId: string, opts: { force?: boolean; co
       .where(and(eq(sentences.generated, true), eq(sentences.ladder, false), gt(sentences.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000))));
     if (today >= DAILY_CAP) return skip("daily limit reached");
 
-    const focus = opts.focus ?? (await leastCovered(userId, [...allowed.lexemes])).slice(0, FOCUS_WORDS);
+    const uses = await loadWordUses(userId, usable(userId));
+    // Unless told otherwise, write about the words with the fewest sentences to practise them in.
+    const focus =
+      opts.focus ?? [...allowed.lexemes].sort((a, b) => (uses.get(a) ?? 0) - (uses.get(b) ?? 0)).slice(0, FOCUS_WORDS);
     // The author sees what already exists for the words it is writing about, newest first.
     const existing = await db
       .select()
@@ -111,7 +107,7 @@ export async function topUpSentences(userId: string, opts: { force?: boolean; co
       .limit(SHOWN_EXISTING);
 
     const drafts = await draftSentences({
-      words,
+      words: workingVocabulary(words, { must: focus, uses }),
       patterns: allowed.patterns,
       focus,
       existing: existing.map(sentenceText),

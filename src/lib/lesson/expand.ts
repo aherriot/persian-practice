@@ -6,11 +6,12 @@ import { lexemes, sentences } from "@/lib/db/schema";
 import { normalizeForCompare } from "@/lib/normalize";
 import { assembleSentence, type Assembled } from "./assemble";
 import { draftExpansion, draftPatternSentences, NEW_WORD, reviewSentences } from "./author";
-import { FORM_PATTERN, GRAMMAR_SPINE } from "./forms";
+import { FORM_PATTERN, formsFor, GRAMMAR_SPINE } from "./forms";
 import { sentenceClip, sentenceText } from "./plan";
 import { isReadyForMore, measureProgress } from "./progress";
-import { loadCourse, loadKnowledge, loadSameWords } from "./store";
+import { loadCourse, loadKnowledge, loadSameWords, loadWordUses } from "./store";
 import type { Lexeme } from "./types";
+import { WORKING_VOCABULARY, workingVocabulary } from "./vocabulary";
 import { ensureTheme, ownedLexeme, validateWord } from "./words";
 
 /** New material is written when fewer than this many unmet words and patterns are left. */
@@ -24,6 +25,8 @@ export const FRONTIER = 4;
 export const MAX_SHAKY = 3;
 const NEW_WORDS = 5;
 const PATTERN_SENTENCES = 3;
+/** Words that can take a new piece of grammar, guaranteed a place in front of the author teaching it. */
+const FORM_WORDS = 30;
 
 export type ExpandResult = {
   skipped?: string;
@@ -70,6 +73,9 @@ export async function expandFrontier(
     const upcoming = [...content.lexemes.values()].filter((l) => !knowledge.has(`lexeme:${l.id}`));
     const patterns = new Set([...content.patterns.keys()].filter((id) => knowledge.has(`pattern:${id}`)));
     let position = last;
+    // The authors write with a working part of a large vocabulary, not all of it.
+    const uses = known.length > WORKING_VOCABULARY ? await loadWordUses(userId) : new Map<string, number>();
+    const mostUsed = (words: Lexeme[]) => [...words].sort((a, b) => (uses.get(b.id) ?? 0) - (uses.get(a.id) ?? 0));
 
     type Candidate = { sentence: Assembled; teaches: string; word?: Lexeme };
     const considered: Candidate[] = [];
@@ -78,7 +84,9 @@ export async function expandFrontier(
     // --- Grammar: the next spine pattern, unless one is already waiting on the ladder. ---
     const next = GRAMMAR_SPINE.find((p) => !patterns.has(p.id));
     if (next && !content.onLadder.has(`pattern:${next.id}`) && content.patterns.has(next.id)) {
-      const drafts = await draftPatternSentences(next, known, patterns, PATTERN_SENTENCES);
+      const takesForm = mostUsed(known.filter((l) => formsFor(l).includes(next.form))).slice(0, FORM_WORDS);
+      const shown = workingVocabulary(known, { must: takesForm.map((l) => l.id), uses });
+      const drafts = await draftPatternSentences(next, shown, patterns, PATTERN_SENTENCES);
       const allowed = { lexemes: new Set(known.map((l) => l.id)), patterns: new Set([...patterns, next.id]) };
       for (const draft of drafts) {
         const built = assembleSentence(draft, content.lexemes, allowed);
@@ -89,8 +97,10 @@ export async function expandFrontier(
     }
 
     // --- Vocabulary. ---
+    const shown = workingVocabulary(known, { uses });
     const drafts = await draftExpansion({
-      known,
+      known: shown,
+      alsoKnown: known.length > shown.length ? known.filter((l) => !shown.includes(l)) : [],
       upcoming,
       patterns,
       interests: [
