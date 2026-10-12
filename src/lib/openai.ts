@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { reportError } from "@/lib/report-error";
 
 /**
  * Shared OpenAI client for the app's route handlers.
@@ -38,6 +39,6 @@ export function errorResponse(scope: string, err: unknown): Response {
     : /\b401\b|api key/i.test(message)
       ? 401
       : 502;
-  console.error(`[${scope}]`, message);
+  reportError(scope, err, { status });
   return Response.json({ error: `${scope}: ${message}` }, { status });
 }
