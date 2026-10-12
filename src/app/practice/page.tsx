@@ -3,8 +3,7 @@ import { AudioReviewProvider } from "@/components/AudioReview";
 import { canReviewAudio } from "@/lib/auth/reviewer";
 import { requireUser } from "@/lib/auth/session";
 import { prepareNextSession } from "@/lib/lesson/background";
-import { planSession } from "@/lib/lesson/plan";
-import { loadAllContent, loadKnowledge, loadSeen } from "@/lib/lesson/store";
+import { loadSession } from "@/lib/lesson/session";
 import { Session } from "../learn/[themeId]/Session";
 
 /**
@@ -14,14 +13,8 @@ import { Session } from "../learn/[themeId]/Session";
  */
 export default async function PracticePage() {
   const user = await requireUser();
-  const [content, knowledge, seen] = await Promise.all([
-    loadAllContent(user.id),
-    loadKnowledge(user.id),
-    loadSeen(user.id),
-  ]);
-
   const now = new Date();
-  const plan = planSession(content, knowledge, { now, seed: now.getTime() % 2 ** 31, maxNew: 2, maxReview: 12, seen });
+  const plan = await loadSession(user.id, { now, seed: now.getTime() % 2 ** 31, maxNew: 2, maxReview: 12 });
   // Written after the page is sent, so the next session has fresh material waiting.
   after(() => prepareNextSession(user.id));
   return (

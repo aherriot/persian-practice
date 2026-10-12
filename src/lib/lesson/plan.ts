@@ -24,7 +24,24 @@ export type PlanOptions = {
   minExercises?: number;
   /** How many times the learner has answered each sentence. Reviews prefer the least seen. */
   seen?: Map<string, number>;
+  /** Meanings to offer as wrong answers. Defaults to the content's own sentences. */
+  distractors?: Distractor[];
+  /** Sentences outside the content that may say the same thing as one inside it, in other words. */
+  alternates?: Sentence[];
 };
+
+export type Distractor = { english: string; length: number };
+
+export const DEFAULT_MAX_NEW = 3;
+export const DEFAULT_MAX_REVIEW = 8;
+
+/** What is due for review, most overdue first. */
+export function dueTargets(knowledge: Map<string, KnowledgeState>, now: Date, max: number): [string, KnowledgeState][] {
+  return [...knowledge.entries()]
+    .filter(([, state]) => state.dueAt <= now)
+    .sort((a, b) => a[1].dueAt.getTime() - b[1].dueAt.getTime())
+    .slice(0, max);
+}
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -64,7 +81,10 @@ export function planSession(
   knowledge: Map<string, KnowledgeState>,
   opts: PlanOptions,
 ): SessionPlan {
-  const { now, maxNew = 3, maxReview = 8, minExercises = 6 } = opts;
+  const { now, maxNew = DEFAULT_MAX_NEW, maxReview = DEFAULT_MAX_REVIEW, minExercises = 6 } = opts;
+  const distractors: Distractor[] =
+    opts.distractors ?? content.sentences.map((s) => ({ english: s.english, length: s.tokens.length }));
+  const withAlternates = opts.alternates ? { ...content, sentences: [...content.sentences, ...opts.alternates] } : content;
   const rand = mulberry32(opts.seed);
   const shuffle = <T>(items: T[]): T[] => {
     const a = [...items];
@@ -115,10 +135,10 @@ export function planSession(
 
   const meaningChoice = (s: Sentence, primary: Target | null, variant: "listen" | "read"): ChoiceExercise => {
     const seen = new Set([s.english]);
-    const others = shuffle(content.sentences)
+    const others = shuffle(distractors)
       .filter((o) => !seen.has(o.english) && seen.add(o.english))
       // Near-length sentences make more plausible wrong answers.
-      .sort((a, b) => Math.abs(a.tokens.length - s.tokens.length) - Math.abs(b.tokens.length - s.tokens.length))
+      .sort((a, b) => Math.abs(a.length - s.tokens.length) - Math.abs(b.length - s.tokens.length))
       .map((o) => o.english);
     return { type: "choice", variant, key: nextKey(variant), ...graded(s, primary), ...withOptions(s.english, others) };
   };
@@ -170,7 +190,7 @@ export function planSession(
       key: nextKey("tiles"),
       ...graded(s, primary),
       tiles: shuffle([...d.tokens.map((t) => ({ fa: t.fa, voc: t.voc, showVowels: t.showVowels })), ...extras]),
-      accepted: acceptedAnswers(s, content),
+      accepted: acceptedAnswers(s, withAlternates),
     };
   };
 
@@ -178,10 +198,7 @@ export function planSession(
 
   // --- Reviews: decided before anything new is marked known, so a review
   // never leans on a word introduced later in the same session. ---
-  const due = [...knowledge.entries()]
-    .filter(([, state]) => state.dueAt <= now)
-    .sort((a, b) => a[1].dueAt.getTime() - b[1].dueAt.getTime())
-    .slice(0, maxReview);
+  const due = dueTargets(knowledge, now, maxReview);
 
   const reviews: Exercise[] = [];
   for (const [key, state] of due) {

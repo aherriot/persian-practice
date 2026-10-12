@@ -93,6 +93,7 @@ export async function addWord(userId: string, entry: WordEntry): Promise<string>
   await db.insert(sentences).values({
     id: `${word.id}-s`,
     themeId,
+    ownerId: userId,
     // Newest last; seconds keep it inside a 32-bit integer.
     position: Math.floor(Date.now() / 1000),
     english: `${word.gloss.charAt(0).toUpperCase()}${word.gloss.slice(1)}.`,

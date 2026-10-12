@@ -9,7 +9,7 @@ import { draftExpansion, draftPatternSentences, NEW_WORD, reviewSentences } from
 import { FORM_PATTERN, GRAMMAR_SPINE } from "./forms";
 import { sentenceClip, sentenceText } from "./plan";
 import { isReadyForMore, measureProgress } from "./progress";
-import { loadAllContent, loadKnowledge } from "./store";
+import { loadCourse, loadKnowledge, loadSameWords } from "./store";
 import type { Lexeme } from "./types";
 import { ensureTheme, ownedLexeme, validateWord } from "./words";
 
@@ -53,8 +53,8 @@ export async function expandFrontier(
   if (running.has(userId)) return { ...result, skipped: "already running" };
   running.add(userId);
   try {
-    const [content, knowledge] = await Promise.all([loadAllContent(userId), loadKnowledge(userId)]);
-    const progress = measureProgress(content, knowledge);
+    const [content, knowledge] = await Promise.all([loadCourse(userId), loadKnowledge(userId)]);
+    const progress = measureProgress(content.onLadder, knowledge);
     if (!opts.force) {
       if (progress.remaining >= FRONTIER) return { ...result, skipped: `${progress.remaining} things still to learn` };
       if (!isReadyForMore(progress, MAX_SHAKY)) return { ...result, skipped: "still consolidating what is known" };
@@ -69,22 +69,15 @@ export async function expandFrontier(
     const known = [...content.lexemes.values()].filter((l) => knowledge.has(`lexeme:${l.id}`));
     const upcoming = [...content.lexemes.values()].filter((l) => !knowledge.has(`lexeme:${l.id}`));
     const patterns = new Set([...content.patterns.keys()].filter((id) => knowledge.has(`pattern:${id}`)));
-    const taken = new Set(content.sentences.map(plainText));
     let position = last;
 
     type Candidate = { sentence: Assembled; teaches: string; word?: Lexeme };
-    const candidates: Candidate[] = [];
-    const consider = (candidate: Candidate) => {
-      const text = plainText(candidate.sentence);
-      if (taken.has(text)) return result.rejected.push({ text: sentenceText(candidate.sentence), reason: "already exists" });
-      taken.add(text);
-      candidates.push(candidate);
-    };
+    const considered: Candidate[] = [];
+    const consider = (candidate: Candidate) => considered.push(candidate);
 
     // --- Grammar: the next spine pattern, unless one is already waiting on the ladder. ---
-    const onLadder = new Set(content.sentences.filter((s) => s.ladder).flatMap((s) => s.patternIds));
     const next = GRAMMAR_SPINE.find((p) => !patterns.has(p.id));
-    if (next && !onLadder.has(next.id) && content.patterns.has(next.id)) {
+    if (next && !content.onLadder.has(`pattern:${next.id}`) && content.patterns.has(next.id)) {
       const drafts = await draftPatternSentences(next, known, patterns, PATTERN_SENTENCES);
       const allowed = { lexemes: new Set(known.map((l) => l.id)), patterns: new Set([...patterns, next.id]) };
       for (const draft of drafts) {
@@ -138,6 +131,19 @@ export async function expandFrontier(
       consider({ sentence: built.sentence, teaches: `${word.fa} — ${word.translit} — ${word.gloss}`, word });
     }
 
+    // --- Nothing the learner already has, nor the same thing twice. ---
+    const taken = new Set((await loadSameWords(userId, considered.map((c) => c.sentence.lexemeIds))).map(plainText));
+    const candidates: Candidate[] = [];
+    for (const candidate of considered) {
+      const text = plainText(candidate.sentence);
+      if (taken.has(text)) {
+        result.rejected.push({ text: sentenceText(candidate.sentence), reason: "already exists" });
+        continue;
+      }
+      taken.add(text);
+      candidates.push(candidate);
+    }
+
     // --- Second opinion, then audio, then store. ---
     const verdicts = await reviewSentences(
       candidates.map(({ sentence, word }) => ({
@@ -175,6 +181,7 @@ export async function expandFrontier(
             ...sentence,
             id: `${themeId}-${++position}`,
             themeId,
+            ownerId: userId,
             position,
             note: null,
             generated: true,

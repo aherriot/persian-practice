@@ -1,5 +1,4 @@
-import { componentsOf } from "./plan";
-import { targetKey, type KnowledgeState, type ThemeContent } from "./types";
+import type { KnowledgeState } from "./types";
 
 /** Answered right this many times in a row, a word is past recognition and into building sentences. */
 const MATURE_REPS = 3;
@@ -15,8 +14,8 @@ export type Progress = {
   remaining: number;
 };
 
-export function measureProgress(content: ThemeContent, knowledge: Map<string, KnowledgeState>): Progress {
-  const onLadder = new Set(content.sentences.filter((s) => s.ladder).flatMap((s) => componentsOf(s).map(targetKey)));
+/** `onLadder` is the target keys of everything a ladder sentence uses (see Course). */
+export function measureProgress(onLadder: Set<string>, knowledge: Map<string, KnowledgeState>): Progress {
   const states = [...knowledge.entries()].filter(([key]) => onLadder.has(key)).map(([, state]) => state);
   return {
     known: states.length,

@@ -1,38 +1,81 @@
-import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db";
 import { knowledge, lexemes, patterns, reviewLog, sentences, themes } from "@/lib/db/schema";
 import { applyAnswer, introducedState } from "./grade";
-import { targetKey, type KnowledgeState, type Lexeme, type Pattern, type Sentence, type Target, type ThemeContent } from "./types";
+import { targetKey, type Kind, type KnowledgeState, type Lexeme, type Pattern, type Sentence, type Target } from "./types";
 
-/** Lexemes and themes are visible when curated (no owner) or the learner's own. */
-const visibleLexeme = (userId: string) => or(isNull(lexemes.ownerId), eq(lexemes.ownerId, userId));
-const visibleTheme = (userId: string) => or(isNull(themes.ownerId), eq(themes.ownerId, userId));
+/** Lexemes, themes and sentences are visible when curated (no owner) or the learner's own. */
+export const visibleLexeme = (userId: string) => or(isNull(lexemes.ownerId), eq(lexemes.ownerId, userId))!;
+const visibleTheme = (userId: string) => or(isNull(themes.ownerId), eq(themes.ownerId, userId))!;
+export const visibleSentence = (userId: string) =>
+  and(eq(sentences.retired, false), or(isNull(sentences.ownerId), eq(sentences.ownerId, userId)))!;
 
-/**
- * Everything the learner can be taught, as one ladder, by theme position:
- * the words they added themselves first (they asked for those), the curated
- * themes, then what the app has added to take them further. Off-ladder
- * generated sentences come last.
- */
-export async function loadAllContent(userId: string): Promise<ThemeContent> {
-  const [themeRows, sentenceRows, lexemeRows, patternRows] = await Promise.all([
-    db.select({ id: themes.id, ownerId: themes.ownerId }).from(themes).where(visibleTheme(userId)).orderBy(asc(themes.position)),
-    db.select().from(sentences).where(eq(sentences.retired, false)).orderBy(asc(sentences.position)),
+// --- Pieces of SQL for asking about sentences without fetching them. ---
+
+export const textArray = (values: string[]) =>
+  sql`ARRAY[${sql.join(values.map((value) => sql`${value}`), sql`, `)}]::text[]`;
+
+/** The ids of what a learner has met, as a subquery. */
+export const knownIds = (userId: string, kind: Kind) =>
+  sql`(select ${knowledge.refId} from ${knowledge} where ${knowledge.userId} = ${userId} and ${knowledge.kind} = ${kind})`;
+
+/** Every id in an array column is one of `ids` (a subquery or a list). */
+export const allIn = (column: AnyPgColumn, ids: SQL) =>
+  sql`not exists (select 1 from unnest(${column}) as used(id) where used.id not in ${ids})`;
+
+/** A sentence made only of what the learner has met. */
+export const eligibleSentence = (userId: string) =>
+  and(allIn(sentences.lexemeIds, knownIds(userId, "lexeme")), allIn(sentences.patternIds, knownIds(userId, "pattern")))!;
+
+export const usesTarget = (target: Target) =>
+  sql`${target.kind === "lexeme" ? sentences.lexemeIds : sentences.patternIds} @> ${textArray([target.id])}`;
+
+/** Whether a theme has anything in it for this learner; another learner's theme never does. */
+export async function hasSentences(userId: string, themeId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: sentences.id })
+    .from(sentences)
+    .where(and(eq(sentences.themeId, themeId), visibleSentence(userId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** The course without its sentences: every word and grammar note, and which of them the ladder teaches. */
+export type Course = {
+  lexemes: Map<string, Lexeme>;
+  patterns: Map<string, Pattern>;
+  /** Target keys ("lexeme:…", "pattern:…") of everything a ladder sentence uses. */
+  onLadder: Set<string>;
+};
+
+export async function loadCourse(userId: string): Promise<Course> {
+  const onLadder = (column: AnyPgColumn, kind: Kind) =>
+    db
+      .selectDistinct({ id: sql<string>`unnest(${column})` })
+      .from(sentences)
+      .where(and(visibleSentence(userId), eq(sentences.ladder, true)))
+      .then((rows) => rows.map((row) => targetKey({ kind, id: row.id })));
+  const [lexemeRows, patternRows, lexemeKeys, patternKeys] = await Promise.all([
     db.select().from(lexemes).where(visibleLexeme(userId)),
     db.select().from(patterns).orderBy(asc(patterns.position)),
+    onLadder(sentences.lexemeIds, "lexeme"),
+    onLadder(sentences.patternIds, "pattern"),
   ]);
-  const themeOrder = new Map(themeRows.map((theme, index) => [theme.id, index]));
-  const lexemeMap = new Map(lexemeRows.map((l) => [l.id, l]));
-  const rank = (s: { themeId: string | null }) => (s.themeId ? themeOrder.get(s.themeId) : themeRows.length);
   return {
-    sentences: sentenceRows
-      // Drops other learners' themes, and anything using a word this learner cannot see.
-      .filter((s) => rank(s) !== undefined && s.lexemeIds.every((id) => lexemeMap.has(id)))
-      .sort((a, b) => rank(a)! - rank(b)!),
-    lexemes: lexemeMap,
+    lexemes: new Map(lexemeRows.map((l) => [l.id, l])),
     patterns: new Map(patternRows.map((p) => [p.id, p])),
+    onLadder: new Set([...lexemeKeys, ...patternKeys]),
   };
 }
+
+/**
+ * Everything the learner can be taught is one ladder, by theme position: the
+ * words they added themselves first (they asked for those), the curated
+ * themes, then what the app has added to take them further. Sentences outside
+ * any theme come last. For queries that join sentences to their theme.
+ */
+export const ladderOrder = [sql`${themes.position} nulls last`, asc(themes.id), asc(sentences.position), asc(sentences.id)];
 
 /**
  * Every word and grammar note the learner can look up, words in the order they
@@ -40,25 +83,19 @@ export async function loadAllContent(userId: string): Promise<ThemeContent> {
  * it stays light however many sentences there are.
  */
 export async function loadVocabulary(userId: string): Promise<{ lexemes: Lexeme[]; patterns: Pattern[] }> {
-  const [themeRows, useRows, lexemeRows, patternRows] = await Promise.all([
-    db.select({ id: themes.id }).from(themes).where(visibleTheme(userId)).orderBy(asc(themes.position)),
+  const [useRows, lexemeRows, patternRows] = await Promise.all([
     db
-      .select({ themeId: sentences.themeId, lexemeIds: sentences.lexemeIds })
+      .select({ lexemeIds: sentences.lexemeIds })
       .from(sentences)
-      .where(eq(sentences.retired, false))
-      .orderBy(asc(sentences.position)),
+      .leftJoin(themes, eq(themes.id, sentences.themeId))
+      .where(visibleSentence(userId))
+      .orderBy(...ladderOrder),
     db.select().from(lexemes).where(visibleLexeme(userId)),
     db.select().from(patterns).orderBy(asc(patterns.position)),
   ]);
-  const themeOrder = new Map(themeRows.map((theme, index) => [theme.id, index]));
   const lexemeMap = new Map(lexemeRows.map((l) => [l.id, l]));
-  const rank = (s: { themeId: string | null }) => (s.themeId ? themeOrder.get(s.themeId) : themeRows.length);
-  const taught = useRows
-    // The same sentences loadAllContent keeps.
-    .filter((s) => rank(s) !== undefined && s.lexemeIds.every((id) => lexemeMap.has(id)))
-    .sort((a, b) => rank(a)! - rank(b)!)
-    .flatMap((s) => s.lexemeIds);
-  return { lexemes: [...new Set(taught)].map((id) => lexemeMap.get(id)!), patterns: patternRows };
+  const taught = new Set(useRows.flatMap((s) => s.lexemeIds));
+  return { lexemes: [...taught].flatMap((id) => lexemeMap.get(id) ?? []), patterns: patternRows };
 }
 
 /**
@@ -72,59 +109,32 @@ export async function loadExamples(userId: string, target: Target, limit: number
     .from(sentences)
     .where(
       and(
-        eq(sentences.retired, false),
-        target.kind === "lexeme"
-          ? // A word on its own illustrates nothing.
-            and(sql`${sentences.lexemeIds} @> ARRAY[${target.id}]::text[]`, sql`${length} > 1`)
-          : sql`${sentences.patternIds} @> ARRAY[${target.id}]::text[]`,
-        // Not from another learner's theme, nor using a word this learner cannot see.
-        sql`(${sentences.themeId} is null or exists (select 1 from ${themes} where ${themes.id} = ${sentences.themeId} and ${visibleTheme(userId)}))`,
-        sql`not exists (select 1 from unnest(${sentences.lexemeIds}) as used(id) where not exists (select 1 from ${lexemes} where ${lexemes.id} = used.id and ${visibleLexeme(userId)}))`,
+        visibleSentence(userId),
+        usesTarget(target),
+        // A word on its own illustrates nothing.
+        target.kind === "lexeme" ? sql`${length} > 1` : undefined,
       ),
     )
     .orderBy(length, asc(sentences.generated), asc(sentences.position), asc(sentences.id))
     .limit(limit);
 }
 
-/** One theme's ladder, plus the generated sentences built entirely from its words. */
-export async function loadTheme(themeId: string, userId: string): Promise<ThemeContent | null> {
-  const [all, rows] = await Promise.all([
-    loadAllContent(userId),
-    db.select({ id: sentences.id }).from(sentences).where(eq(sentences.themeId, themeId)),
-  ]);
-  const own = new Set(rows.map((row) => row.id));
-  // Empty for another learner's theme: loadAllContent has already left its sentences out.
-  const ladder = all.sentences.filter((s) => own.has(s.id));
-  if (ladder.length === 0) return null;
-  const lexemeIds = new Set(ladder.flatMap((s) => s.lexemeIds));
-  const patternIds = new Set(ladder.flatMap((s) => s.patternIds));
-  const mixed = all.sentences.filter(
-    (s) =>
-      !own.has(s.id) &&
-      !s.ladder &&
-      s.lexemeIds.every((id) => lexemeIds.has(id)) &&
-      s.patternIds.every((id) => patternIds.has(id)),
-  );
-  return {
-    sentences: [...ladder, ...mixed],
-    lexemes: new Map([...all.lexemes].filter(([id]) => lexemeIds.has(id))),
-    patterns: new Map([...all.patterns].filter(([id]) => patternIds.has(id))),
-  };
+/**
+ * The learner's sentences made of exactly the same words as one of `wordSets`:
+ * all a new sentence can be a repeat of, so the rest need not be read.
+ */
+export async function loadSameWords(userId: string, wordSets: string[][]): Promise<Sentence[]> {
+  if (wordSets.length === 0) return [];
+  const same = wordSets.map((ids) => sql`(${sentences.lexemeIds} @> ${textArray(ids)} and ${sentences.lexemeIds} <@ ${textArray(ids)})`);
+  return db.select().from(sentences).where(and(visibleSentence(userId), or(...same)));
 }
 
-/** How many times the learner has answered each sentence. */
-export async function loadSeen(userId: string): Promise<Map<string, number>> {
-  const rows = await db
-    .select({ sentenceId: reviewLog.sentenceId, count: sql<number>`count(*)::int` })
-    .from(reviewLog)
-    .where(eq(reviewLog.userId, userId))
-    .groupBy(reviewLog.sentenceId);
-  return new Map(rows.flatMap((row) => (row.sentenceId ? [[row.sentenceId, row.count] as const] : [])));
-}
-
-/** Takes a generated sentence out of circulation for everyone. Hand-written sentences are left alone. */
-export async function retireSentence(sentenceId: string): Promise<void> {
-  await db.update(sentences).set({ retired: true }).where(and(eq(sentences.id, sentenceId), eq(sentences.generated, true)));
+/** Takes a generated sentence the learner was shown out of circulation. Hand-written sentences are left alone. */
+export async function retireSentence(userId: string, sentenceId: string): Promise<void> {
+  await db
+    .update(sentences)
+    .set({ retired: true })
+    .where(and(eq(sentences.id, sentenceId), eq(sentences.generated, true), visibleSentence(userId)));
 }
 
 export async function loadKnowledge(userId: string, only?: Target[]): Promise<Map<string, KnowledgeState>> {
@@ -195,7 +205,7 @@ export async function themeSummaries(userId: string, now = new Date()): Promise<
     db
       .select({ themeId: sentences.themeId, lexemeIds: sentences.lexemeIds, patternIds: sentences.patternIds })
       .from(sentences)
-      .where(eq(sentences.ladder, true)),
+      .where(and(visibleSentence(userId), eq(sentences.ladder, true))),
     loadKnowledge(userId),
   ]);
   return themeRows.map((theme) => {

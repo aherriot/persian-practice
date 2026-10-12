@@ -1,8 +1,10 @@
 import { after } from "next/server";
+import { isNull } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { lexemes } from "@/lib/db/schema";
 import { draftWord } from "@/lib/lesson/author";
-import { loadAllContent } from "@/lib/lesson/store";
 import { addWord, findExisting, prepareWord, removeWord, validateWord } from "@/lib/lesson/words";
 import { errorResponse, requireApiKey } from "@/lib/openai";
 
@@ -44,8 +46,7 @@ export async function POST(request: Request): Promise<Response> {
     if (data.action === "draft") {
       const missingKey = requireApiKey();
       if (missingKey) return missingKey;
-      const content = await loadAllContent(userId);
-      const examples = [...content.lexemes.values()].filter((l) => !l.ownerId).slice(0, STYLE_EXAMPLES);
+      const examples = await db.select().from(lexemes).where(isNull(lexemes.ownerId)).limit(STYLE_EXAMPLES);
       const draft = await draftWord(data.input, data.hint, examples);
       if (!draft.understood) return Response.json({ error: "I could not tell which word that is. Try another spelling, or add what it means." }, { status: 422 });
       const existing = await findExisting(userId, draft.fa);

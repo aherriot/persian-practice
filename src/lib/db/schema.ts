@@ -161,10 +161,13 @@ export const sentences = pgTable(
     ladder: boolean("ladder").notNull().default(true),
     // Reported as wrong by a learner; never shown again.
     retired: boolean("retired").notNull().default(false),
+    // The learner it was written for; null for curated sentences, which everyone shares.
+    ownerId: text("ownerId").references(() => users.id, { onDelete: "cascade" }),
     createdAt: createdAt(),
   },
   (t) => [
     index().on(t.themeId, t.position),
+    index().on(t.ownerId),
     // "Which sentences use X", for the reference's examples.
     index().using("gin", t.lexemeIds),
     index().using("gin", t.patternIds),
@@ -205,7 +208,11 @@ export const reviewLog = pgTable(
     correct: boolean("correct").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index().on(t.userId, t.createdAt)],
+  (t) => [
+    index().on(t.userId, t.createdAt),
+    // "How often has this learner answered this sentence."
+    index().on(t.userId, t.sentenceId),
+  ],
 );
 
 // What each synthesised clip should say, keyed by a hash of (text, expected

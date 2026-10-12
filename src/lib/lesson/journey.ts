@@ -49,7 +49,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const STAGE_ORDER: Stage[] = ["shaky", "new", "learning", "established"];
 
 /** Everything the learner has met, summarised. Knowledge of things no longer in the course is ignored. */
-export function summariseJourney(content: ThemeContent, knowledge: Map<string, KnowledgeState>, now: Date): Journey {
+export function summariseJourney(content: Pick<ThemeContent, "lexemes" | "patterns">, knowledge: Map<string, KnowledgeState>, now: Date): Journey {
   const items: JourneyItem[] = [];
   for (const [key, state] of knowledge) {
     const kind = key.startsWith("lexeme:") ? "lexeme" : "pattern";

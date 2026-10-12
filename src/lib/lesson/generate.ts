@@ -1,15 +1,15 @@
 import { createHash } from "node:crypto";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, notExists, sql } from "drizzle-orm";
 import { makeVerifiedClip } from "@/lib/audio-store";
 import { db } from "@/lib/db";
-import { sentences } from "@/lib/db/schema";
+import { lexemes, reviewLog, sentences } from "@/lib/db/schema";
 import { normalizeForCompare } from "@/lib/normalize";
 import { assembleSentence, type Assembled } from "./assemble";
 import { draftSentences, reviewSentences } from "./author";
 import { sentenceClip, sentenceText } from "./plan";
 import { isFluent, measureProgress } from "./progress";
-import { loadAllContent, loadKnowledge, loadSeen } from "./store";
-import type { Sentence, ThemeContent } from "./types";
+import { allIn, knownIds, loadCourse, loadKnowledge, loadSameWords, textArray, visibleSentence } from "./store";
+import type { Sentence } from "./types";
 
 /** Below this many unseen generated sentences, more are written. */
 const MIN_UNSEEN = 6;
@@ -22,6 +22,8 @@ const DAILY_CAP = 24;
 const STRETCH_SHARE = 0.6;
 /** Too few words make only strange sentences. */
 const MIN_WORDS = 5;
+/** How many existing sentences the author is shown so as not to repeat them. */
+const SHOWN_EXISTING = 80;
 
 export type TopUpResult = {
   /** Why nothing was generated, if nothing was. */
@@ -31,14 +33,29 @@ export type TopUpResult = {
 };
 
 const plainText = (s: Pick<Sentence, "tokens">) => normalizeForCompare(s.tokens.map((t) => t.fa).join(" "));
-const generatedId = (s: Assembled) =>
-  `gen-${createHash("sha256").update(`${plainText(s)}${s.endPunct}`).digest("hex").slice(0, 16)}`;
+const generatedId = (userId: string, s: Assembled) =>
+  `gen-${createHash("sha256").update(`${userId}\n${plainText(s)}${s.endPunct}`).digest("hex").slice(0, 16)}`;
+
+/**
+ * Sentences the learner could be given now: made of words they know, or added
+ * themselves and are about to meet, and grammar they know.
+ */
+const usable = (userId: string) =>
+  and(
+    visibleSentence(userId),
+    allIn(
+      sentences.lexemeIds,
+      sql`(select * from ${knownIds(userId, "lexeme")} as met union select ${lexemes.id} from ${lexemes} where ${lexemes.ownerId} = ${userId})`,
+    ),
+    allIn(sentences.patternIds, knownIds(userId, "pattern")),
+  )!;
 
 /** The learner's words with the fewest usable sentences, fewest first. */
-function leastCovered(content: ThemeContent, wordIds: string[], usable: Sentence[]): string[] {
-  const uses = new Map(wordIds.map((id) => [id, 0]));
-  for (const s of usable) for (const id of s.lexemeIds) if (uses.has(id)) uses.set(id, uses.get(id)! + 1);
-  return [...uses.entries()].sort((a, b) => a[1] - b[1]).map(([id]) => id);
+async function leastCovered(userId: string, wordIds: string[]): Promise<string[]> {
+  const word = sql<string>`unnest(${sentences.lexemeIds})`;
+  const rows = await db.select({ id: word, uses: sql<number>`count(*)::int` }).from(sentences).where(usable(userId)).groupBy(word);
+  const uses = new Map(rows.map((row) => [row.id, row.uses]));
+  return [...wordIds].sort((a, b) => (uses.get(a) ?? 0) - (uses.get(b) ?? 0));
 }
 
 const running = new Set<string>();
@@ -56,7 +73,7 @@ export async function topUpSentences(userId: string, opts: { force?: boolean; co
   if (running.has(userId)) return { skipped: "already running", added: [], rejected: [] };
   running.add(userId);
   try {
-    const [content, knowledge, seen] = await Promise.all([loadAllContent(userId), loadKnowledge(userId), loadSeen(userId)]);
+    const [content, knowledge] = await Promise.all([loadCourse(userId), loadKnowledge(userId)]);
     const skip = (skipped: string): TopUpResult => ({ skipped, added: [], rejected: [] });
 
     // Known words, plus the learner's own words that are still waiting to be
@@ -68,10 +85,14 @@ export async function topUpSentences(userId: string, opts: { force?: boolean; co
       patterns: new Set([...content.patterns.keys()].filter((id) => knowledge.has(`pattern:${id}`))),
     };
 
-    const usable = content.sentences.filter(
-      (s) => s.lexemeIds.every((id) => allowed.lexemes.has(id)) && s.patternIds.every((id) => allowed.patterns.has(id)),
-    );
-    const unseen = usable.filter((s) => s.generated && !seen.has(s.id)).length;
+    const answered = db
+      .select({ id: reviewLog.id })
+      .from(reviewLog)
+      .where(and(eq(reviewLog.userId, userId), eq(reviewLog.sentenceId, sentences.id)));
+    const [{ unseen }] = await db
+      .select({ unseen: sql<number>`count(*)::int` })
+      .from(sentences)
+      .where(and(usable(userId), eq(sentences.generated, true), notExists(answered)));
     if (!opts.force && unseen >= MIN_UNSEEN) return skip("enough unseen sentences");
 
     const [{ today }] = await db
@@ -80,32 +101,42 @@ export async function topUpSentences(userId: string, opts: { force?: boolean; co
       .where(and(eq(sentences.generated, true), eq(sentences.ladder, false), gt(sentences.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000))));
     if (today >= DAILY_CAP) return skip("daily limit reached");
 
+    const focus = opts.focus ?? (await leastCovered(userId, [...allowed.lexemes])).slice(0, FOCUS_WORDS);
+    // The author sees what already exists for the words it is writing about, newest first.
+    const existing = await db
+      .select()
+      .from(sentences)
+      .where(and(usable(userId), sql`${sentences.lexemeIds} && ${textArray(focus)}`))
+      .orderBy(desc(sentences.createdAt))
+      .limit(SHOWN_EXISTING);
+
     const drafts = await draftSentences({
       words,
       patterns: allowed.patterns,
-      focus: opts.focus ?? leastCovered(content, [...allowed.lexemes], usable).slice(0, FOCUS_WORDS),
-      existing: usable.map(sentenceText),
+      focus,
+      existing: existing.map(sentenceText),
       count: Math.min(opts.count ?? BATCH, DAILY_CAP - today),
       // Once most words are solid, short restatements teach nothing new.
-      stretch: isFluent(measureProgress(content, knowledge), STRETCH_SHARE),
+      stretch: isFluent(measureProgress(content.onLadder, knowledge), STRETCH_SHARE),
     });
 
     const rejected: TopUpResult["rejected"] = [];
-    const taken = new Set(content.sentences.map(plainText));
-    const built: Assembled[] = [];
+    const assembled: Assembled[] = [];
     for (const draft of drafts) {
       const result = assembleSentence(draft, content.lexemes, allowed);
-      if (!result.ok) {
-        rejected.push({ text: draft.english, reason: result.reason });
-        continue;
-      }
-      const text = plainText(result.sentence);
+      if (result.ok) assembled.push(result.sentence);
+      else rejected.push({ text: draft.english, reason: result.reason });
+    }
+    const taken = new Set((await loadSameWords(userId, assembled.map((s) => s.lexemeIds))).map(plainText));
+    const built: Assembled[] = [];
+    for (const sentence of assembled) {
+      const text = plainText(sentence);
       if (taken.has(text)) {
-        rejected.push({ text: sentenceText(result.sentence), reason: "already exists" });
+        rejected.push({ text: sentenceText(sentence), reason: "already exists" });
         continue;
       }
       taken.add(text);
-      built.push(result.sentence);
+      built.push(sentence);
     }
 
     const verdicts = await reviewSentences(
@@ -126,8 +157,8 @@ export async function topUpSentences(userId: string, opts: { force?: boolean; co
         rejected.push({ text: sentenceText(sentence), reason: "audio did not pass the listener" });
         continue;
       }
-      const row = { ...sentence, id: generatedId(sentence), position: 0, note: null, generated: true, ladder: false };
-      await db.insert(sentences).values({ ...row, themeId: null }).onConflictDoNothing();
+      const row = { ...sentence, id: generatedId(userId, sentence), position: 0, note: null, generated: true, ladder: false };
+      await db.insert(sentences).values({ ...row, themeId: null, ownerId: userId }).onConflictDoNothing();
       added.push(row);
     }
     return { added, rejected };

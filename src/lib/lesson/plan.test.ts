@@ -152,6 +152,23 @@ test("with nothing due and nothing new, the session is ungraded practice", () =>
   assert.ok(plan.exercises.every((e) => e.type !== "intro-lexeme" && e.type !== "intro-pattern" && e.primary === null));
 });
 
+test("a session planned from a slice of the course matches one planned from all of it", () => {
+  const knowledge = knowing(4, 1, 5);
+  const known = new Set(knowledge.keys());
+  // What the session loader fetches: the next ladder sentences that teach something, and a sample of meanings.
+  const ahead = content.sentences.filter((s) => componentsOf(s).some((c) => !known.has(targetKey(c)))).slice(0, 12);
+  const distractors = content.sentences.map((s) => ({ english: s.english, length: s.tokens.length }));
+  const whole = planSession(content, knowledge, { now: NOW, seed: 5 });
+  const sliced = planSession({ ...content, sentences: ahead }, knowledge, { now: NOW, seed: 5, distractors });
+
+  const intros = (plan: typeof whole) => plan.exercises.flatMap((e) => (e.type.startsWith("intro") ? [e.sentence.id] : []));
+  assert.equal(sliced.newCount, 3);
+  assert.deepEqual(intros(sliced), intros(whole));
+  for (const e of sliced.exercises) {
+    if (e.type === "choice" && e.variant === "listen") assert.equal(new Set(e.options).size, 4);
+  }
+});
+
 test("the same seed gives the same plan", () => {
   const a = planSession(content, knowing(9, 1, -1), { now: NOW, seed: 42 });
   const b = planSession(content, knowing(9, 1, -1), { now: NOW, seed: 42 });

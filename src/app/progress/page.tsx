@@ -8,7 +8,7 @@ import type { ActivityHour } from "@/lib/lesson/activity";
 import { FRONTIER, MAX_SHAKY } from "@/lib/lesson/expand";
 import { summariseJourney, type JourneyItem, type Stage } from "@/lib/lesson/journey";
 import { isReadyForMore, measureProgress } from "@/lib/lesson/progress";
-import { loadAllContent, loadKnowledge } from "@/lib/lesson/store";
+import { loadCourse, loadKnowledge } from "@/lib/lesson/store";
 import { Activity } from "./Activity";
 
 /** The streak is counted from this much history, so it tops out here. */
@@ -82,7 +82,7 @@ export default async function ProgressPage() {
   const since = new Date(now.getTime() - HISTORY_DAYS * 24 * 60 * 60 * 1000);
   const hour = sql<string>`date_trunc('hour', ${reviewLog.createdAt})`;
   const [content, knowledge, hourRows, exerciseRows] = await Promise.all([
-    loadAllContent(user.id),
+    loadCourse(user.id),
     loadKnowledge(user.id),
     db
       .select({ at: sql<number>`(extract(epoch from ${hour}) * 1000)::float8`, total: sql<number>`count(*)::int`, correct: sql<number>`count(*) filter (where ${reviewLog.correct})::int` })
@@ -97,7 +97,7 @@ export default async function ProgressPage() {
   ]);
 
   const journey = summariseJourney(content, knowledge, now);
-  const progress = measureProgress(content, knowledge);
+  const progress = measureProgress(content.onLadder, knowledge);
   const hours: ActivityHour[] = hourRows.map((row) => ({ at: Number(row.at), total: row.total, correct: row.correct }));
   const exercises = exerciseRows.filter((row) => row.total > 0).sort((a, b) => a.correct / a.total - b.correct / b.total);
   const answered = exercises.reduce((sum, row) => sum + row.total, 0);
