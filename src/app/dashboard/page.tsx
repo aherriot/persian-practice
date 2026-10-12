@@ -43,9 +43,14 @@ export default async function DashboardPage() {
             Practise
           </Link>
         </div>
-        <Link href="/reference" className="text-sm font-medium text-cobalt underline">
-          Look up a word or grammar note
-        </Link>
+        <div className="flex flex-wrap gap-x-5 gap-y-1">
+          <Link href="/progress" className="text-sm font-medium text-cobalt underline">
+            See your progress
+          </Link>
+          <Link href="/reference" className="text-sm font-medium text-cobalt underline">
+            Look up a word or grammar note
+          </Link>
+        </div>
       </section>
 
       <section className="flex flex-col gap-4">

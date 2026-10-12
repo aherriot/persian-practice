@@ -14,14 +14,14 @@ import type { Lexeme } from "./types";
 import { ensureTheme, ownedLexeme, validateWord } from "./words";
 
 /** New material is written when fewer than this many unmet words and patterns are left. */
-const FRONTIER = 4;
+export const FRONTIER = 4;
 /**
  * …and the learner is getting no more than this many of the things they have
  * met wrong. This is the only brake: a learner who answers everything
  * correctly gets new material as fast as they use it up, and mistakes hold it
  * back until they are put right. There is no limit per day.
  */
-const MAX_SHAKY = 3;
+export const MAX_SHAKY = 3;
 const NEW_WORDS = 5;
 const PATTERN_SENTENCES = 3;
 
