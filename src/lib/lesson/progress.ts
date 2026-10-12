@@ -7,6 +7,8 @@ const MATURE_REPS = 3;
 export type Progress = {
   /** Words and patterns met. */
   known: number;
+  /** Of those, how many were answered right the last time they came up. */
+  secure: number;
   /** Of those, how many are well established. */
   mature: number;
   /** Words and patterns on the ladder that have not been met yet. */
@@ -18,6 +20,7 @@ export function measureProgress(content: ThemeContent, knowledge: Map<string, Kn
   const states = [...knowledge.entries()].filter(([key]) => onLadder.has(key)).map(([, state]) => state);
   return {
     known: states.length,
+    secure: states.filter((state) => state.repetitions >= 1).length,
     mature: states.filter((state) => state.repetitions >= MATURE_REPS).length,
     remaining: onLadder.size - states.length,
   };
@@ -25,3 +28,11 @@ export function measureProgress(content: ThemeContent, knowledge: Map<string, Kn
 
 /** Most of what the learner knows is well established: time to make it harder. */
 export const isFluent = (p: Progress, share: number) => p.known >= 8 && p.mature / p.known >= share;
+
+/**
+ * The learner is getting what they have met right, bar a few, so new material
+ * will not bury it. Deliberately not `isFluent`: spaced repetition puts a
+ * word's third correct answer about a week after its first, and a learner who
+ * has finished everything should not wait a week with nothing new.
+ */
+export const isReadyForMore = (p: Progress, maxShaky: number) => p.known >= 8 && p.known - p.secure <= maxShaky;

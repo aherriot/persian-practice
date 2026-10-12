@@ -1,4 +1,4 @@
-import { eq, gt, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { wordClip } from "@/lib/audio-key";
 import { makeVerifiedClip } from "@/lib/audio-store";
 import { db } from "@/lib/db";
@@ -8,19 +8,22 @@ import { assembleSentence, type Assembled } from "./assemble";
 import { draftExpansion, draftPatternSentences, NEW_WORD, reviewSentences } from "./author";
 import { FORM_PATTERN, GRAMMAR_SPINE } from "./forms";
 import { sentenceClip, sentenceText } from "./plan";
-import { isFluent, measureProgress } from "./progress";
+import { isReadyForMore, measureProgress } from "./progress";
 import { loadAllContent, loadKnowledge } from "./store";
 import type { Lexeme } from "./types";
 import { ensureTheme, ownedLexeme, validateWord } from "./words";
 
 /** New material is written when fewer than this many unmet words and patterns are left. */
 const FRONTIER = 4;
-/** …and at least this share of what the learner knows is well established. */
-const READY_SHARE = 0.5;
+/**
+ * …and the learner is getting no more than this many of the things they have
+ * met wrong. This is the only brake: a learner who answers everything
+ * correctly gets new material as fast as they use it up, and mistakes hold it
+ * back until they are put right. There is no limit per day.
+ */
+const MAX_SHAKY = 3;
 const NEW_WORDS = 5;
 const PATTERN_SENTENCES = 3;
-/** Ceiling on new ladder sentences stored for one learner per rolling day. */
-const DAILY_CAP = 10;
 
 export type ExpandResult = {
   skipped?: string;
@@ -54,15 +57,14 @@ export async function expandFrontier(
     const progress = measureProgress(content, knowledge);
     if (!opts.force) {
       if (progress.remaining >= FRONTIER) return { ...result, skipped: `${progress.remaining} things still to learn` };
-      if (!isFluent(progress, READY_SHARE)) return { ...result, skipped: "still consolidating what is known" };
+      if (!isReadyForMore(progress, MAX_SHAKY)) return { ...result, skipped: "still consolidating what is known" };
     }
 
     const themeId = goingFurtherId(userId);
-    const [{ today, last }] = await db
-      .select({ today: sql<number>`count(*) filter (where ${gt(sentences.createdAt, new Date(Date.now() - 24 * 60 * 60 * 1000))})::int`, last: sql<number>`coalesce(max(${sentences.position}), 0)::int` })
+    const [{ last }] = await db
+      .select({ last: sql<number>`coalesce(max(${sentences.position}), 0)::int` })
       .from(sentences)
       .where(eq(sentences.themeId, themeId));
-    if (today >= DAILY_CAP) return { ...result, skipped: "daily limit reached" };
 
     const known = [...content.lexemes.values()].filter((l) => knowledge.has(`lexeme:${l.id}`));
     const upcoming = [...content.lexemes.values()].filter((l) => !knowledge.has(`lexeme:${l.id}`));
@@ -152,7 +154,6 @@ export async function expandFrontier(
         result.rejected.push({ text, reason: `reviewer: ${verdicts[index].problem}` });
         continue;
       }
-      if (result.added.length + today >= DAILY_CAP) break;
       if (!opts.dryRun) {
         const audioOk = (!word || (await makeVerifiedClip(wordClip(word)))) && (await makeVerifiedClip(sentenceClip(sentence)));
         if (!audioOk) {
