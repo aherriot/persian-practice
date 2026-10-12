@@ -11,10 +11,13 @@ test("spaces sequential calls by at least the interval", async () => {
     stamps.push(Date.now());
   }
 
-  // First call is immediate; each subsequent one waits out the interval.
+  // First call is immediate; each subsequent one waits for its slot, a whole
+  // number of intervals after the first. Measured from the first call rather
+  // than between neighbours: a timer that fires late leaves a short gap to the
+  // next call, which is the gate working, not failing.
   for (let i = 1; i < stamps.length; i++) {
-    const gap = stamps[i] - stamps[i - 1];
-    assert.ok(gap >= 45, `gap ${i} was ${gap}ms, expected >= ~50ms`);
+    const elapsed = stamps[i] - stamps[0];
+    assert.ok(elapsed >= i * 50 - 5, `call ${i} came ${elapsed}ms after the first, expected >= ~${i * 50}ms`);
   }
 });
 

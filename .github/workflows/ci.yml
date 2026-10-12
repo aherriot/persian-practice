@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Writes next-env.d.ts and the route types (LayoutProps and friends),
+      # which are not checked in and which the typecheck needs.
+      - run: npx next typegen
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      # `next build`, not `npm run build`: the script migrates the database
+      # first. Nothing connects to a database or to OpenAI while building, but
+      # both clients are constructed when their modules load, so the variables
+      # have to be set to something.
+      - run: npx next build
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost/ci
+          AUTH_SECRET: ci-only-not-a-secret
+          OPENAI_API_KEY: ci-only-not-a-key
