@@ -1,3 +1,4 @@
+import { auth } from "@/lib/auth";
 import { errorResponse, openai, requireApiKey } from "@/lib/openai";
 import { SELECTED_TTS } from "@/lib/tts-provider";
 
@@ -20,17 +21,29 @@ const VOICE_INSTRUCTION = [
   "Natural, warm, conversational pace — you are talking with someone learning the language.",
 ].join(" ");
 
+/** Far longer than any lesson sentence; a ceiling on what one request can spend. */
+const MAX_TEXT_LENGTH = 600;
+
 export async function POST(request: Request): Promise<Response> {
+  // Signed-in only: every call spends money on speech synthesis.
+  const session = await auth();
+  if (!session?.user?.id) return Response.json({ error: "not signed in" }, { status: 401 });
+
   const missingKey = requireApiKey();
   if (missingKey) return missingKey;
 
   try {
-    const { text, format = "mp3" } = (await request.json()) as {
-      text?: string;
-      format?: "mp3" | "pcm";
-    };
-    if (!text?.trim()) {
+    const body = (await request.json().catch(() => null)) as { text?: unknown; format?: unknown } | null;
+    const text = typeof body?.text === "string" ? body.text : "";
+    const format = body?.format ?? "mp3";
+    if (!text.trim()) {
       return Response.json({ error: "no text to speak" }, { status: 400 });
+    }
+    if (text.length > MAX_TEXT_LENGTH) {
+      return Response.json({ error: `text is longer than ${MAX_TEXT_LENGTH} characters` }, { status: 413 });
+    }
+    if (format !== "mp3" && format !== "pcm") {
+      return Response.json({ error: "format must be mp3 or pcm" }, { status: 400 });
     }
 
     const speech = await openai.audio.speech.create({
