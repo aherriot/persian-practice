@@ -531,3 +531,78 @@ reason the review page exists.
 - 13 OpenAI TTS samples unrendered (quota).
 - Phase 0B (STT error preservation) not yet run — needs OpenAI quota.
 - What fraction of realistic tutor output hits finding 5.
+
+---
+
+## 13. An automated listener catches mispronounced TTS, so audio is generated, checked and retried
+
+**The problem.** The lesson sentence «هویج و سیب داریم» was stored saying the
+formal *va* where the spoken *o* is wanted. Regenerating the **identical
+request** produced the correct *havij o sib dârim*. So OpenAI's speech model is
+not deterministic the way §5 found Azure to be: for any spelling that leaves the
+reading open it can come out right on one call and wrong on the next. No prompt
+can be trusted on its own, and fixing sentences by hand does not scale.
+
+**Changing the text or the instruction did not help.** Five variants of that
+sentence, rated by the project owner:
+
+| Variant | Verdict |
+|---|---|
+| Same text and voice instruction, regenerated | **best, natural** |
+| و attached to the previous word (هویجو) | *havij* mispronounced, does not flow |
+| و replaced by a zamme (هویجُ) | unnatural pause |
+| Voice instruction plus a sentence naming the reading | said *vav* |
+| Attached و plus the naming sentence | unnatural pause |
+
+The fourth row is the "untested combination" from §7 — a pronunciation
+instruction layered on the voice instruction — and it failed here, as it did on
+the lone word هویج (*hovij*). Use one or the other, not both.
+
+**The listener.** `gpt-audio-1.5` is given the audio and the expected
+transliteration, word by word, and asked what it heard at each position and
+whether it matches (`src/lib/audio-verify.ts`). Asked *blind* to transcribe
+phonetically it was too noisy to use (*hâdi jo sib* for a clip rated correct).
+Checking against an expected form is what works.
+
+Measured on 23 human-rated clips — the 17 from §6 plus the six above — two
+listens each (`npm run spike:listener`):
+
+| | |
+|---|---|
+| Listens agreeing with the human | 38 / 46 |
+| Bad clips passed | 1 / 24 listens — a pause-only defect, failed on its other listen |
+| Good clips rejected | 7 / 22 listens |
+| Mispronounced clips passed, on any listen | **0** |
+
+The errors run in the cheap direction. Requiring **two passing listens** accepted
+no bad clip in this set and rejected about 4 in 10 good ones, and a rejection
+only costs another attempt.
+
+**The pipeline** (`src/lib/audio-store.ts`). Every clip carries the
+transliteration it must match, which the content already has. Up to four
+attempts: two with the voice instruction alone, then two with the §6 "named"
+instruction — without the voice instruction — for the words that keep failing.
+The first candidate to pass two listens is stored; if none does, the closest is
+stored and the clip is marked `flagged` for a human.
+
+First full run, Shopping theme, 62 clips:
+
+| Accepted on | Clips |
+|---|---|
+| Attempt 1 (voice instruction) | 42 |
+| Attempt 2 (voice instruction) | 8 |
+| Attempts 3–4 (named instruction) | 9 |
+| Flagged, then verified on a re-run | 1 |
+| Listener gave no usable reply; verified on a re-run | 2 |
+
+The named rung rescued nine clips, including the lone word و as *o*.
+
+### Caveats
+
+- The listener was validated on 23 clips. Zero false passes on that set is not
+  zero in general — like the keyword screen in §12 it nominates, and a native
+  speaker's ear is still the real test.
+- It checks segments, not prosody. It caught one of three pause-only defects
+  reliably; naturalness and accent are not what it measures.
+- A clip can be `verified` and still wrong if the hand-written transliteration
+  it is checked against is wrong.

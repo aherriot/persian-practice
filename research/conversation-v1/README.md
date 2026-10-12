@@ -30,6 +30,7 @@ Paths mirror where each file lived under the repo root.
 | `src/lib/prompt.ts` | Tutor system prompt, colloquial-register rules, structured output shape |
 | `src/lib/clauses.ts`, `audio-queue.ts`, `pcm.ts` | Clause-by-clause streaming TTS playback |
 | `src/lib/timings.ts` | Turn latency measurement and verdicts |
+| `src/lib/seed-data.ts`, `seed-items.ts` | The tiered starter item bank and its seed script (was `src/lib/db/` and `scripts/`) |
 
 ## Still live elsewhere
 

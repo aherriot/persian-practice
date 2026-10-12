@@ -1,0 +1,186 @@
+import type { ThemeSeed } from "./types";
+
+/**
+ * Hand-written first theme. Everything is spoken Tehrani; `literary` records
+ * the book form where the two differ. Verb forms are separate lexemes (the
+ * learner knows داریم before they know دارم) grouped by `lemma`.
+ *
+ * Not yet reviewed by a native speaker.
+ */
+export const SHOPPING: ThemeSeed = {
+  id: "shopping",
+  title: "Shopping",
+  titleFa: "خرید",
+  description: "Fruit, vegetables and bread: saying what you have, what you want, and asking the price.",
+  position: 0,
+  lexemes: [
+    { id: "havij", fa: "هویج", voc: "هَویج", translit: "havij", gloss: "carrot" },
+    { id: "darim", fa: "داریم", voc: "داریم", translit: "dârim", gloss: "we have", lemma: "داشتن", verbPerson: "1pl" },
+    { id: "ma", fa: "ما", voc: "ما", translit: "mâ", gloss: "we", subjectPronoun: "1pl" },
+    { id: "sib", fa: "سیب", voc: "سیب", translit: "sib", gloss: "apple" },
+    {
+      id: "o",
+      fa: "و",
+      voc: "و",
+      translit: "o",
+      gloss: "and",
+      note: "Written و and read \"va\" in formal Persian; in speech it is a quick \"o\" attached to the word before it.",
+    },
+    { id: "daram", fa: "دارم", voc: "دارَم", translit: "dâram", gloss: "I have", lemma: "داشتن", verbPerson: "1sg" },
+    { id: "man", fa: "من", voc: "مَن", translit: "man", gloss: "I", subjectPronoun: "1sg" },
+    { id: "nun", fa: "نون", voc: "نون", translit: "nun", gloss: "bread", literary: "نان" },
+    { id: "dari", fa: "داری", voc: "داری", translit: "dâri", gloss: "you have", lemma: "داشتن", verbPerson: "2sg" },
+    { id: "are", fa: "آره", voc: "آرِه", translit: "âre", gloss: "yeah", literary: "بله" },
+    { id: "to", fa: "تو", voc: "تُو", translit: "to", gloss: "you (informal)", subjectPronoun: "2sg" },
+    { id: "na", fa: "نه", voc: "نَه", translit: "na", gloss: "no" },
+    { id: "karafs", fa: "کرفس", voc: "کَرَفس", translit: "karafs", gloss: "celery" },
+    { id: "az-ghabl", fa: "از قبل", voc: "اَز قَبل", translit: "az ghabl", gloss: "already" },
+    { id: "mikham", fa: "می‌خوام", voc: "می‌خوام", translit: "mikhâm", gloss: "I want", lemma: "خواستن", literary: "می‌خواهم", verbPerson: "1sg" },
+    { id: "ye", fa: "یه", voc: "یِه", translit: "ye", gloss: "a / one", literary: "یک" },
+    { id: "kilu", fa: "کیلو", voc: "کیلو", translit: "kilu", gloss: "kilo" },
+    { id: "do", fa: "دو", voc: "دُو", translit: "do", gloss: "two" },
+    { id: "ham", fa: "هم", voc: "هَم", translit: "ham", gloss: "also / too" },
+    { id: "chande", fa: "چنده", voc: "چَندِه", translit: "chande", gloss: "how much is it?", literary: "چند است" },
+    { id: "in", fa: "این", voc: "این", translit: "in", gloss: "this" },
+    {
+      id: "ro",
+      fa: "رو",
+      voc: "رُو",
+      translit: "ro",
+      gloss: "(marks the specific thing being acted on)",
+      literary: "را",
+      note: "No English equivalent. It follows a specific object: این رو می‌خوام, \"I want this one\".",
+    },
+    { id: "gerun", fa: "گرون", voc: "گِرون", translit: "gerun", gloss: "expensive", literary: "گران" },
+    { id: "kheyli", fa: "خیلی", voc: "خِیلی", translit: "kheyli", gloss: "very" },
+    { id: "taze", fa: "تازه", voc: "تازِه", translit: "tâze", gloss: "fresh" },
+    {
+      id: "darin",
+      fa: "دارین",
+      voc: "دارین",
+      translit: "dârin",
+      gloss: "you have (polite or plural)",
+      lemma: "داشتن",
+      literary: "دارید",
+      verbPerson: "2pl",
+    },
+    { id: "mamnun", fa: "ممنون", voc: "مَمنون", translit: "mamnun", gloss: "thanks" },
+    {
+      id: "bi-zahmat",
+      fa: "بی‌زحمت",
+      voc: "بی‌زَحمَت",
+      translit: "bi-zahmat",
+      gloss: "please",
+      note: "Literally \"without trouble\". The everyday way to soften a request; لطفاً is more formal.",
+    },
+    { id: "befarmayin", fa: "بفرمایین", voc: "بِفَرمایین", translit: "befarmâyin", gloss: "here you go", literary: "بفرمایید" },
+    { id: "salam", fa: "سلام", voc: "سَلام", translit: "salâm", gloss: "hello" },
+  ],
+  patterns: [
+    {
+      id: "question",
+      title: "Yes/no questions",
+      summary:
+        "A statement becomes a yes/no question just by raising your voice at the end. The words and their order do not change: هویج داری (you have carrots) → هویج داری؟ (do you have carrots?).",
+    },
+    {
+      id: "negation",
+      title: "Saying \"not\"",
+      summary:
+        "Put نَـ (na-) on the front of the verb: دارم (I have) → ندارم (I don't have), داریم → نداریم.",
+    },
+    {
+      id: "copula",
+      title: "\"Is\" as an ending",
+      summary:
+        "Spoken Persian says \"is\" with a short ـه (-e) on the end of the last word: سیب (apple) → این سیبه (this is an apple). Book Persian writes است instead.",
+    },
+    {
+      id: "ezafe",
+      title: "Linking words (ezâfe)",
+      summary:
+        "To attach a describing word or an owner to a noun, add a short -e sound to the noun: سیبِ من (sib-e man, my apple), نونِ تازه (nun-e tâze, fresh bread). It is spoken but almost never written.",
+    },
+  ],
+  sentences: [
+    { english: "Carrot.", tokens: ["havij"], note: "Persian usually uses the singular where English says \"carrots\"." },
+    { english: "We have carrots.", tokens: ["havij", "darim"], note: "The verb comes last." },
+    {
+      english: "We have carrots.",
+      tokens: ["ma", "havij", "darim"],
+      note: "ما is optional: the ending of داریم already says \"we\".",
+    },
+    { english: "We have apples.", tokens: ["sib", "darim"] },
+    { english: "We have carrots and apples.", tokens: ["havij", "o", "sib", "darim"] },
+    { english: "I have apples.", tokens: ["sib", "daram"] },
+    { english: "I have apples.", tokens: ["man", "sib", "daram"] },
+    { english: "I have bread.", tokens: ["nun", "daram"] },
+    { english: "You have carrots.", tokens: ["havij", "dari"] },
+    { english: "Do you have carrots?", tokens: ["havij", "dari"], end: "؟", patterns: ["question"] },
+    { english: "Yeah, I have carrots.", tokens: [{ lex: "are", after: "،" }, "havij", "daram"] },
+    { english: "Do you have bread?", tokens: ["to", "nun", "dari"], end: "؟", patterns: ["question"] },
+    {
+      english: "I don't have carrots.",
+      tokens: ["havij", { lex: "daram", fa: "ندارم", voc: "نَدارَم", translit: "nadâram" }],
+      patterns: ["negation"],
+    },
+    {
+      english: "No, we don't have bread.",
+      tokens: [{ lex: "na", after: "،" }, "nun", { lex: "darim", fa: "نداریم", voc: "نَداریم", translit: "nadârim" }],
+      patterns: ["negation"],
+    },
+    { english: "We have celery.", tokens: ["karafs", "darim"] },
+    { english: "We already have celery.", tokens: ["ma", "az-ghabl", "karafs", "darim"] },
+    { english: "I want apples.", tokens: ["sib", "mikham"] },
+    { english: "I want an apple.", tokens: ["ye", "sib", "mikham"] },
+    { english: "I want a kilo of carrots.", tokens: ["ye", "kilu", "havij", "mikham"] },
+    { english: "I want two kilos of apples.", tokens: ["do", "kilu", "sib", "mikham"] },
+    { english: "I want apples too.", tokens: ["sib", "ham", "mikham"] },
+    { english: "How much is it?", tokens: ["chande"], end: "؟" },
+    { english: "How much is this?", tokens: ["in", "chande"], end: "؟" },
+    { english: "How much is a kilo of apples?", tokens: ["ye", "kilu", "sib", "chande"], end: "؟" },
+    { english: "I want this one.", tokens: ["in", "ro", "mikham"] },
+    {
+      english: "This is an apple.",
+      tokens: ["in", { lex: "sib", fa: "سیبه", voc: "سیبِه", translit: "sibe" }],
+      patterns: ["copula"],
+    },
+    {
+      english: "This is expensive.",
+      tokens: ["in", { lex: "gerun", fa: "گرونه", voc: "گِرونِه", translit: "gerune" }],
+      patterns: ["copula"],
+    },
+    {
+      english: "It's very expensive.",
+      tokens: ["kheyli", { lex: "gerun", fa: "گرونه", voc: "گِرونِه", translit: "gerune" }],
+      patterns: ["copula"],
+    },
+    {
+      english: "My apple.",
+      tokens: [{ lex: "sib", voc: "سیبِ", translit: "sib-e" }, "man"],
+      patterns: ["ezafe"],
+    },
+    {
+      english: "We have fresh bread.",
+      tokens: [{ lex: "nun", voc: "نونِ", translit: "nun-e" }, "taze", "darim"],
+      patterns: ["ezafe"],
+    },
+    {
+      english: "Do you have fresh bread? (polite)",
+      tokens: [{ lex: "nun", voc: "نونِ", translit: "nun-e" }, "taze", "darin"],
+      end: "؟",
+      patterns: ["ezafe", "question"],
+    },
+    { english: "Thanks.", tokens: ["mamnun"] },
+    { english: "A kilo of apples, please.", tokens: ["bi-zahmat", "ye", "kilu", "sib"] },
+    { english: "Here you go.", tokens: ["befarmayin"] },
+    {
+      english: "Hello, do you have fresh bread?",
+      tokens: [{ lex: "salam", after: "،" }, { lex: "nun", voc: "نونِ", translit: "nun-e" }, "taze", "darin"],
+      end: "؟",
+      patterns: ["ezafe", "question"],
+    },
+  ],
+};
+
+export const THEMES: ThemeSeed[] = [SHOPPING];

@@ -22,6 +22,34 @@
       "when": 1787140664505,
       "tag": "0002_graceful_midnight",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791731283467,
+      "tag": "0003_romantic_magma",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791740100581,
+      "tag": "0004_needy_wallflower",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791740935021,
+      "tag": "0005_broken_famine",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791741834506,
+      "tag": "0006_robust_jane_foster",
+      "breakpoints": true
     }
   ]
 }
