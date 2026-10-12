@@ -104,6 +104,8 @@ export const themes = pgTable("Theme", {
   titleFa: text("titleFa").notNull(),
   description: text("description").notNull(),
   position: integer("position").notNull(),
+  // Set on a learner's own "My words" theme; null = curated, visible to everyone.
+  ownerId: text("ownerId").references(() => users.id, { onDelete: "cascade" }),
   createdAt: createdAt(),
 });
 
@@ -123,6 +125,9 @@ export const lexemes = pgTable("Lexeme", {
   subjectPronoun: text("subjectPronoun").$type<Person>(),
   verbPerson: text("verbPerson").$type<Person>(),
   ownerId: text("ownerId").references(() => users.id, { onDelete: "cascade" }), // null = curated
+  // For an owned word: typed in by the learner, or chosen for them by the
+  // expansion author once they ran out of curated material.
+  addedBy: text("addedBy").$type<"learner" | "app">(),
   createdAt: createdAt(),
 });
 
@@ -139,9 +144,8 @@ export const sentences = pgTable(
   "Sentence",
   {
     id: text("id").primaryKey(),
-    themeId: text("themeId")
-      .notNull()
-      .references(() => themes.id, { onDelete: "cascade" }),
+    // Null for generated sentences, which mix words from any theme.
+    themeId: text("themeId").references(() => themes.id, { onDelete: "cascade" }),
     position: integer("position").notNull(), // place on the theme's ladder
     english: text("english").notNull(),
     note: text("note"),
@@ -150,6 +154,13 @@ export const sentences = pgTable(
     // Denormalised from tokens so "which sentences use X" needs no JSON digging.
     lexemeIds: text("lexemeIds").array().notNull(),
     patternIds: text("patternIds").array().notNull().default([]),
+    // Written by the LLM author (src/lib/lesson/generate.ts), not by hand.
+    generated: boolean("generated").notNull().default(false),
+    // On the ladder: may be used to introduce its one new word or pattern.
+    // Off it, a sentence only ever practises things already known.
+    ladder: boolean("ladder").notNull().default(true),
+    // Reported as wrong by a learner; never shown again.
+    retired: boolean("retired").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [index().on(t.themeId, t.position)],

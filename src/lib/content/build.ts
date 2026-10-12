@@ -18,6 +18,8 @@ export function buildTheme(seed: ThemeSeed): ThemeContent {
         note: l.note ?? null,
         subjectPronoun: l.subjectPronoun ?? null,
         verbPerson: l.verbPerson ?? null,
+        ownerId: null,
+        addedBy: null,
       },
     ]),
   );
@@ -45,6 +47,8 @@ export function buildTheme(seed: ThemeSeed): ThemeContent {
       endPunct: s.end ?? ".",
       lexemeIds: [...new Set(tokens.map((t) => t.lexemeId))],
       patternIds: s.patterns ?? [],
+      generated: false,
+      ladder: true,
     };
   });
 

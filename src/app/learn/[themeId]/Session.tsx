@@ -61,7 +61,8 @@ function save(body: unknown): void {
     .catch(() => {});
 }
 
-export function Session({ plan, themeId }: { plan: SessionPlan; themeId: string }) {
+/** `href` is this session's own address, for starting another one. */
+export function Session({ plan, href }: { plan: SessionPlan; href: string }) {
   const [queue, setQueue] = useState<Exercise[]>(plan.exercises);
   const [index, setIndex] = useState(-1); // -1 = start screen
   const [answered, setAnswered] = useState<boolean | null>(null);
@@ -130,7 +131,7 @@ export function Session({ plan, themeId }: { plan: SessionPlan; themeId: string 
         <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
           <h1 className="font-[family-name:var(--font-display-latin)] text-2xl font-bold text-ink">Ready?</h1>
           {plan.exercises.length === 0 ? (
-            <p className="text-sm text-ink/60">There is nothing to practise in this theme yet.</p>
+            <p className="text-sm text-ink/60">There is nothing to practise here yet.</p>
           ) : (
             <p className="max-w-xs text-sm leading-relaxed text-ink/70">
               {describePlan(plan)} It takes {plan.exercises.length} short exercises.
@@ -170,7 +171,7 @@ export function Session({ plan, themeId }: { plan: SessionPlan; themeId: string 
           </p>
           <div className="flex items-center gap-6">
             {/* A full page load, so the server plans the next session from the saved answers. */}
-            <a href={`/learn/${themeId}`} className="text-sm font-medium text-cobalt underline">
+            <a href={href} className="text-sm font-medium text-cobalt underline">
               Another session
             </a>
             <Link href="/dashboard" className="text-sm text-ink/60 underline">
@@ -244,6 +245,7 @@ export function Session({ plan, themeId }: { plan: SessionPlan; themeId: string 
                 </div>
                 <SpeakButton url={exercise.sentence.audioUrl} label="Hear the sentence" />
               </div>
+              {exercise.sentence.generated && <ReportSentence key={exercise.key} sentenceId={exercise.sentence.id} />}
             </div>
           )}
           {canContinue && (
@@ -254,6 +256,28 @@ export function Session({ plan, themeId }: { plan: SessionPlan; themeId: string 
         </div>
       </div>
     </Shell>
+  );
+}
+
+/** Generated sentences are checked by machine, not by a person, so the learner gets the last word. */
+function ReportSentence({ sentenceId }: { sentenceId: string }) {
+  const [reported, setReported] = useState(false);
+  if (reported) return <p className="mt-2 text-xs text-ink/60">Thanks. That sentence will not be shown again.</p>;
+  return (
+    <button
+      type="button"
+      className="mt-2 text-xs text-ink/50 underline hover:text-ink"
+      onClick={() => {
+        setReported(true);
+        void fetch("/api/lesson/report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sentenceId }),
+        }).catch(() => {});
+      }}
+    >
+      This sentence was written by the app. Does it sound wrong? Remove it
+    </button>
   );
 }
 

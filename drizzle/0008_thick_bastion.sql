@@ -1,0 +1,1 @@
+ALTER TABLE "Lexeme" ADD COLUMN "addedBy" text;

@@ -6,6 +6,8 @@ import { themeSummaries } from "@/lib/lesson/store";
 export default async function DashboardPage() {
   const user = await requireUser();
   const themes = await themeSummaries(user.id);
+  const learned = themes.reduce((n, theme) => n + theme.learned, 0);
+  const due = themes.reduce((n, theme) => n + theme.due, 0);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-8 bg-paper px-5 py-8">
@@ -22,6 +24,28 @@ export default async function DashboardPage() {
           </button>
         </form>
       </header>
+
+      <section className="flex flex-col gap-3 rounded-lg border border-ink/15 bg-sand px-5 py-4 shadow-[inset_0_4px_8px_-6px_rgba(42,29,22,0.35)]">
+        <h2 className="text-lg font-semibold text-ink">Practise everything</h2>
+        <p className="text-sm text-ink/65">
+          Reviews whatever is due across all your themes, then adds a little that is new.
+        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-ink/55">
+            {learned} words and patterns learned
+            {due > 0 && ` · ${due} due for review`}
+          </p>
+          <Link
+            href="/practice"
+            className="rounded-t-2xl rounded-b-md border-[1.5px] border-gold bg-cobalt px-5 py-2 text-sm font-medium tracking-wide text-sand shadow-[0_0_0_3px_var(--color-sand),0_0_0_4px_var(--color-ink)] transition-transform hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-[6px] focus-visible:outline-turquoise-dark"
+          >
+            Practise
+          </Link>
+        </div>
+        <Link href="/reference" className="text-sm font-medium text-cobalt underline">
+          Look up a word or grammar note
+        </Link>
+      </section>
 
       <section className="flex flex-col gap-4">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-ink/50">Themes</h2>

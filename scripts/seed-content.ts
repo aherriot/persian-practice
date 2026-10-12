@@ -15,11 +15,21 @@ import { buildTheme, validateTheme } from "../src/lib/content/build.ts";
 import { THEMES } from "../src/lib/content/shopping.ts";
 import { db } from "../src/lib/db/index.ts";
 import { lexemes, patterns, sentences, themes } from "../src/lib/db/schema.ts";
+import { GRAMMAR_SPINE } from "../src/lib/lesson/forms.ts";
 import { sentenceClip } from "../src/lib/lesson/plan.ts";
 
 const excluded = (column: string) => sql.raw(`excluded."${column}"`);
 
 async function main() {
+  // Grammar the expansion author teaches later; the rows must exist before it does.
+  await db
+    .insert(patterns)
+    .values(GRAMMAR_SPINE.map(({ id, title, summary }, index) => ({ id, title, summary, position: 100 + index })))
+    .onConflictDoUpdate({
+      target: patterns.id,
+      set: Object.fromEntries(["title", "summary", "position"].map((c) => [c, excluded(c)])),
+    });
+
   for (const seed of THEMES) {
     const problems = validateTheme(seed);
     if (problems.length > 0) {

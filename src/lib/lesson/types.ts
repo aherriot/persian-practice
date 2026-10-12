@@ -14,6 +14,9 @@ export type Lexeme = {
   subjectPronoun: Person | null;
   /** Set on a verb form: who its ending says is doing it. */
   verbPerson: Person | null;
+  /** The learner who added it; null for curated words. */
+  ownerId: string | null;
+  addedBy: "learner" | "app" | null;
 };
 
 export type Person = "1sg" | "2sg" | "3sg" | "1pl" | "2pl" | "3pl";
@@ -29,6 +32,10 @@ export type Sentence = {
   endPunct: string;
   lexemeIds: string[];
   patternIds: string[];
+  /** Written by the LLM author rather than by hand. */
+  generated: boolean;
+  /** May introduce its one new word or pattern. Off the ladder, a sentence only practises what is known. */
+  ladder: boolean;
 };
 
 export type ThemeContent = {
@@ -71,6 +78,7 @@ export type DisplaySentence = {
   translit: string;
   note: string | null;
   audioUrl: string;
+  generated: boolean;
 };
 
 type Graded = {

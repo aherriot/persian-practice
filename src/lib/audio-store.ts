@@ -153,3 +153,12 @@ export async function getClipAudio(hash: string): Promise<Buffer | null> {
   if (stored?.statusCode === 200) return Buffer.from(await new Response(stored.stream).arrayBuffer());
   return makeClipAudio(hash);
 }
+
+/** Registers a clip and makes its audio now. True if the listener accepted it. */
+export async function makeVerifiedClip(spec: ClipSpec): Promise<boolean> {
+  await registerClips([spec]);
+  const existing = await db.query.audioClips.findFirst({ where: eq(audioClips.hash, spec.hash) });
+  if (!existing?.status) await makeClipAudio(spec.hash);
+  const clip = existing?.status ? existing : await db.query.audioClips.findFirst({ where: eq(audioClips.hash, spec.hash) });
+  return clip?.status === "verified";
+}

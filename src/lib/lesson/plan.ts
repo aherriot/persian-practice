@@ -22,6 +22,8 @@ export type PlanOptions = {
   maxNew?: number;
   maxReview?: number;
   minExercises?: number;
+  /** How many times the learner has answered each sentence. Reviews prefer the least seen. */
+  seen?: Map<string, number>;
 };
 
 function mulberry32(seed: number): () => number {
@@ -75,6 +77,10 @@ export function planSession(
 
   const known = new Set(knowledge.keys());
   const usedSentences = new Set<string>();
+  // Shuffled, then the sentences answered least often first: a word is tested
+  // in a sentence the learner cannot simply remember.
+  const seenCount = (s: Sentence) => opts.seen?.get(s.id) ?? 0;
+  const leastSeen = (items: Sentence[]) => shuffle(items).sort((a, b) => seenCount(a) - seenCount(b));
   let counter = 0;
   const nextKey = (label: string) => `${label}-${counter++}`;
 
@@ -90,6 +96,7 @@ export function planSession(
     translit: s.tokens.map((t) => t.translit + (t.after ? "," : "")).join(" "),
     note: s.note,
     audioUrl: audioUrl(sentenceClip(s)),
+    generated: s.generated,
   });
 
   const graded = (s: Sentence, primary: Target | null) => {
@@ -186,7 +193,7 @@ export function planSession(
     );
     if (containing.length === 0) continue; // belongs to another theme
     const fresh = containing.filter((s) => !usedSentences.has(s.id));
-    const s = shuffle(fresh.length > 0 ? fresh : containing)[0];
+    const s = leastSeen(fresh.length > 0 ? fresh : containing)[0];
     const multiWord = s.tokens.length >= 2;
     const reps = state.repetitions;
 
@@ -201,6 +208,7 @@ export function planSession(
   const deferred: Exercise[] = [];
   let newCount = 0;
   for (const s of content.sentences) {
+    if (!s.ladder) continue;
     const unknown = componentsOf(s).filter((c) => !known.has(targetKey(c)));
     if (unknown.length === 0) continue;
     if (newCount + unknown.length > maxNew) break;
@@ -248,7 +256,7 @@ export function planSession(
 
   // --- Nothing due and nothing new: ungraded practice so a session is never empty. ---
   if (exercises.length < minExercises) {
-    const spare = shuffle(content.sentences.filter((s) => isEligible(s) && !usedSentences.has(s.id)));
+    const spare = leastSeen(content.sentences.filter((s) => isEligible(s) && !usedSentences.has(s.id)));
     for (const s of spare) {
       if (exercises.length >= minExercises) break;
       exercises.push(s.tokens.length >= 2 && rand() < 0.5 ? tiles(s, null) : meaningChoice(s, null, "listen"));
