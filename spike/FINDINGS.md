@@ -578,7 +578,8 @@ The errors run in the cheap direction. Requiring **two passing listens** accepte
 no bad clip in this set and rejected about 4 in 10 good ones, and a rejection
 only costs another attempt.
 
-**The pipeline** (`src/lib/audio-store.ts`). Every clip carries the
+**The pipeline** (`src/lib/audio-store.ts`; the "named" rung below was removed
+in §14). Every clip carries the
 transliteration it must match, which the content already has. Up to four
 attempts: two with the voice instruction alone, then two with the §6 "named"
 instruction — without the voice instruction — for the words that keep failing.
@@ -606,3 +607,99 @@ The named rung rescued nine clips, including the lone word و as *o*.
   reliably; naturalness and accent are not what it measures.
 - A clip can be `verified` and still wrong if the hand-written transliteration
   it is checked against is wrong.
+
+---
+
+## 14. The "named" fallback cost the accent — removed
+
+**The problem.** The project owner reported that some "to have" sentences sound
+Afghan, and that the giveaway is the long **â** in دارم / داریم. The text is
+standard Tehrani, so the fault is in the audio. §7 never tested this vowel: its
+markers were ق/غ, و, the majhul vowels, ey/ay and final ه.
+
+**The listener cannot hear it.** Asked outright whether each stored "to have"
+clip sounded Iranian or Dari, `gpt-audio-1.5` said "Iranian" on 175 of 183
+listens, with no relation to how the clip was made. Accent needs a human ear.
+
+**Blind rating** (`npm run spike:avowel`): four sentences, each read seven ways.
+Only one sentence was rated — «سلام، نون تازه دارین؟» — so this is seven
+ratings, not twenty-eight:
+
+| Arm | â in the verb |
+|---|---|
+| nova, voice instruction | Tehrani |
+| nova, voice instruction + the vowel described | Tehrani |
+| coral, voice instruction | Tehrani |
+| nova, "named" fallback (§13) | off |
+| nova, "named" fallback with "Iranian Persian, Tehrani accent" added | off |
+| alloy, voice instruction | off |
+| the stored clip (made by the "named" fallback) | can't tell |
+
+Every nova clip made with the voice instruction was rated Tehrani; both made
+with the word-naming instruction were rated off, and stating the accent inside
+that instruction did not rescue it. The off clips were marked "off in another
+way", not "Afghan-like".
+
+**Decision.** The named rung is gone. All attempts use the voice instruction,
+and the ladder is six attempts instead of four. `npm run db:audio` now remakes
+any clip whose stored instruction is not the current one.
+
+Remaking the 17 named clips and retrying the flagged ones left 111 of 114
+verified and 3 flagged — fewer than the 6 flagged before. So the named rung was
+not needed to get the words right; more tries with the voice instruction do it.
+The exception is the lone word و, which the named rung had read as *o* and
+which is now flagged (heard *va*). That overwrite was itself a fault: a remake
+now replaces stored audio only if it passes the listener (`makeClipAudio`).
+
+### Caveats
+
+- One sentence, one rater, one take per arm, and the speech model varies between
+  takes. The direction matches the code-level suspicion, but it is thin.
+- Nothing automated checks this vowel. A new clip is verified for its words only.
+- Azure Dilara was meant as a native reference arm; the Azure key was rejected.
+
+---
+
+## 15. Stored audio can only get better; a person's verdict is part of the system
+
+**The problem.** §14's remake overwrote the lone word و (*o*) with a take that
+said *va*. Nothing stopped a worse clip replacing a better one, the only accent
+judge — a person — had no way to tell the system anything, and a change to how
+audio is made (§13's named rung) had shipped without anyone hearing its accent.
+
+**Rules now in `src/lib/audio-store.ts`:**
+
+- A remake replaces stored audio only if it passes the listener. Otherwise the
+  old audio stays.
+- A person can approve a clip, which pins it — no automated run replaces it —
+  or reject it, which keeps the rejected take (`reviewed/<id>.mp3`, with the
+  reason and what the listener had said) and makes a new one. Rows are in
+  `AudioReview`. These are the only accent labels the project has.
+- A listener that gives no reply fails that take instead of aborting the run.
+  It did this three times running on the very short clip of و.
+- `PIPELINE_VERSION` is frozen. A method change is detected from each clip's
+  stored instruction, so approvals survive it.
+
+Reviewing is in the app: a flag beside every audio button, and `/review`. It is
+limited to `AUDIO_REVIEWER_EMAILS`.
+
+**Words that cannot be said alone.** و is *va* in isolation and *o* only
+between words, so the speech model is right to say *va* for «و.» and retries do
+not help: six of six takes said *va*, twice over. Cutting a sentence down to the
+word and its neighbours does not help either — «هویج و سیب», with and without a
+full stop, was read *havij va sib* six times out of six, although the full
+sentences with a verb come out *o*. So a lone word that fails its ladder is
+played inside the shortest verified sentence that contains it (an approved one
+first), using that sentence's stored audio; the clip records which in `carrier`.
+
+After this, the Shopping theme stands at 114 of 114 verified, with و played
+inside *havij o nun dârim*.
+
+### Caveats
+
+- The review flow was exercised through the store functions (approve pins,
+  reject archives and remakes), not yet by a person in the browser.
+- A word's carrier audio is a copy. Remaking the sentence does not update it.
+- Not built yet: an audition step that makes any new instruction, voice or
+  retry rung pass a blind human rating on a fixed set of trap clips before it
+  is used. It needs approved clips to compare against, which do not exist yet.

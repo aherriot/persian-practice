@@ -9,10 +9,10 @@ let element: HTMLAudioElement | null = null;
 
 const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=";
 
-export function preloadAudio(url: string): Promise<string> {
+export function preloadAudio(url: string, cache: RequestCache = "default"): Promise<string> {
   let pending = blobs.get(url);
   if (!pending) {
-    pending = fetch(url)
+    pending = fetch(url, { cache })
       .then((response) => {
         if (!response.ok) throw new Error(`audio ${response.status}`);
         return response.blob();
@@ -22,6 +22,12 @@ export function preloadAudio(url: string): Promise<string> {
     blobs.set(url, pending);
   }
   return pending;
+}
+
+/** Fetches a clip again after it has been remade, past this page's copy and the browser's. */
+export function refreshAudio(url: string): Promise<string> {
+  blobs.delete(url);
+  return preloadAudio(url, "reload");
 }
 
 /** Call from a click handler before the first clip. */

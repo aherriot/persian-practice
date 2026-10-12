@@ -1,0 +1,1 @@
+ALTER TABLE "AudioClip" ADD COLUMN "carrier" text;

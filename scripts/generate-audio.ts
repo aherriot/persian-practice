@@ -10,7 +10,7 @@
  */
 import "./load-env.ts";
 
-import { deleteOrphanedAudio, makeClipAudio } from "../src/lib/audio-store.ts";
+import { deleteOrphanedAudio, isStale, makeClipAudio } from "../src/lib/audio-store.ts";
 import { db } from "../src/lib/db/index.ts";
 import { audioClips } from "../src/lib/db/schema.ts";
 import { createThrottle, isDailyQuota, isRateLimit, sleep } from "../src/lib/throttle.ts";
@@ -28,7 +28,12 @@ async function main() {
   const retryFlagged = process.argv.includes("--retry");
 
   const registered = await db.select().from(audioClips);
-  const todo = registered.filter((clip) => clip.status === null || (retryFlagged && clip.status === "flagged"));
+  // A clip made with an instruction the pipeline no longer uses is made again.
+  // One a person has approved is left alone whatever else is true of it.
+  const todo = registered.filter(
+    (clip) =>
+      clip.status === null || (!clip.approvedAt && (isStale(clip) || (retryFlagged && clip.status === "flagged"))),
+  );
   console.log(`Making audio for ${todo.length} of ${registered.length} clips…`);
 
   const gate = createThrottle(MIN_INTERVAL_MS);
@@ -67,11 +72,20 @@ async function main() {
 
   const after = await db.select().from(audioClips);
   const verified = after.filter((clip) => clip.status === "verified");
-  const flagged = after.filter((clip) => clip.status === "flagged");
+  const flagged = after.filter((clip) => clip.status === "flagged" && !clip.approvedAt);
+  const approved = after.filter((clip) => clip.approvedAt).length;
   const firstTry = verified.filter((clip) => clip.attempts === 1).length;
-  console.log(`\n${verified.length} verified (${firstTry} on the first attempt), ${flagged.length} flagged.`);
+  console.log(`\n${verified.length} verified (${firstTry} on the first attempt), ${flagged.length} flagged, ${approved} approved by ear.`);
+  for (const clip of after.filter((clip) => clip.carrier)) {
+    console.log(`  in use   ${clip.expected}  — played inside "${clip.carrier}", not alone  (${clip.text})`);
+  }
   for (const clip of flagged) {
     console.log(`  flagged  ${clip.expected}  — heard: ${clip.heard}  (${clip.text})`);
+  }
+
+  // A remake that failed the listener leaves the old audio in place; say so.
+  for (const clip of after.filter((clip) => isStale(clip) && !clip.approvedAt)) {
+    console.log(`  kept     ${clip.expected}  — old audio from a retired instruction; no remake passed  (${clip.text})`);
   }
 
   const orphans = await deleteOrphanedAudio();

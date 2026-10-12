@@ -26,7 +26,7 @@ export const authConfig = {
     // Runs in the proxy for every matched request.
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = Boolean(auth?.user);
-      const protectedPrefixes = ["/dashboard", "/learn", "/practice", "/reference"];
+      const protectedPrefixes = ["/dashboard", "/learn", "/practice", "/reference", "/review"];
       const isProtected = protectedPrefixes.some((p) => nextUrl.pathname.startsWith(p));
 
       if (!isProtected) return true;

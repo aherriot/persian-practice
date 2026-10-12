@@ -218,8 +218,38 @@ export const audioClips = pgTable("AudioClip", {
   // The instruction that produced the stored audio.
   instructions: text("instructions"),
   attempts: integer("attempts"),
+  // Set when the stored audio is a whole sentence the word is in ("havij o sib
+  // dârim") because the word could not be said alone: that sentence's transliteration.
+  carrier: text("carrier"),
+  // Set when a person has listened and approved the stored audio. An approved
+  // clip is pinned: nothing automated replaces it.
+  approvedAt: timestamp("approvedAt", { precision: 3 }),
   createdAt: createdAt(),
 });
+
+// A person's verdict on one take of a clip. The automated listener cannot hear
+// accent (FINDINGS §14), so these are the only accent labels there are. A
+// rejected take's audio is kept at reviewed/<id>.mp3 as a labelled bad example;
+// an approved take is the clip's own stored audio.
+export const audioReviews = pgTable(
+  "AudioReview",
+  {
+    id: id(),
+    hash: text("hash")
+      .notNull()
+      .references(() => audioClips.hash, { onDelete: "cascade" }),
+    verdict: text("verdict").$type<"approved" | "rejected">().notNull(),
+    reason: text("reason").$type<"word" | "accent" | "pause" | "other">(),
+    note: text("note"),
+    // How the judged take was made, and what the listener had said about it.
+    instructions: text("instructions"),
+    heard: text("heard"),
+    listenerStatus: text("listenerStatus").$type<"verified" | "flagged">(),
+    userId: text("userId").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index().on(t.hash)],
+);
 
 // --- Legacy tables (conversation-v1) ---
 //

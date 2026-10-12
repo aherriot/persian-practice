@@ -19,8 +19,9 @@ export async function GET(_request: Request, { params }: { params: Promise<{ has
     return new Response(new Uint8Array(audio), {
       headers: {
         "Content-Type": "audio/mpeg",
-        // The hash covers text, voice and instructions, so a clip never changes.
-        "Cache-Control": "private, max-age=31536000, immutable",
+        // A clip can be remade (a rejected take, a retired instruction), so it
+        // is not cached for ever. The device that rejects one refetches it at once.
+        "Cache-Control": "private, max-age=86400",
       },
     });
   } catch (err) {

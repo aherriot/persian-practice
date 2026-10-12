@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { canReviewAudio } from "@/lib/auth/reviewer";
 import { requireUser } from "@/lib/auth/session";
 import { signOut } from "@/lib/auth";
 import { themeSummaries } from "@/lib/lesson/store";
@@ -84,7 +85,17 @@ export default async function DashboardPage() {
         ))}
       </section>
 
-      <p className="text-xs text-ink/40">Signed in as {user.email ?? user.name ?? user.id}</p>
+      <p className="text-xs text-ink/40">
+        Signed in as {user.email ?? user.name ?? user.id}
+        {canReviewAudio(user.email) && (
+          <>
+            {" · "}
+            <Link href="/review" className="underline">
+              Review audio
+            </Link>
+          </>
+        )}
+      </p>
     </main>
   );
 }

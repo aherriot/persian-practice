@@ -10,7 +10,12 @@ export const VOICE_INSTRUCTION = [
   "Natural, warm, conversational pace — you are talking with someone learning the language.",
 ].join(" ");
 
-/** Bump to re-make every clip after a change to how audio is produced or checked. */
+/**
+ * Frozen. Bumping it would re-register every clip under a new hash and orphan
+ * the approvals people have given. A change to how audio is made is picked up
+ * instead by comparing each clip's stored instruction with the current one
+ * (`isStale` in src/lib/audio-store.ts), which leaves approved clips alone.
+ */
 const PIPELINE_VERSION = "2";
 
 /**

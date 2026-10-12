@@ -48,7 +48,7 @@ export async function listen(audio: Buffer, expected: string[]): Promise<Verdict
   throw failure;
 }
 
-class ListenerReplyError extends Error {}
+export class ListenerReplyError extends Error {}
 
 async function listenOnce(audio: Buffer, expected: string[]): Promise<Verdict> {
   const response = await openai.chat.completions.create({

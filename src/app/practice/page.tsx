@@ -1,4 +1,6 @@
 import { after } from "next/server";
+import { AudioReviewProvider } from "@/components/AudioReview";
+import { canReviewAudio } from "@/lib/auth/reviewer";
 import { requireUser } from "@/lib/auth/session";
 import { prepareNextSession } from "@/lib/lesson/background";
 import { planSession } from "@/lib/lesson/plan";
@@ -22,5 +24,9 @@ export default async function PracticePage() {
   const plan = planSession(content, knowledge, { now, seed: now.getTime() % 2 ** 31, maxNew: 2, maxReview: 12, seen });
   // Written after the page is sent, so the next session has fresh material waiting.
   after(() => prepareNextSession(user.id));
-  return <Session plan={plan} href="/practice" />;
+  return (
+    <AudioReviewProvider enabled={canReviewAudio(user.email)}>
+      <Session plan={plan} href="/practice" />
+    </AudioReviewProvider>
+  );
 }
