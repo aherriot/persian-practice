@@ -163,7 +163,12 @@ export const sentences = pgTable(
     retired: boolean("retired").notNull().default(false),
     createdAt: createdAt(),
   },
-  (t) => [index().on(t.themeId, t.position)],
+  (t) => [
+    index().on(t.themeId, t.position),
+    // "Which sentences use X", for the reference's examples.
+    index().using("gin", t.lexemeIds),
+    index().using("gin", t.patternIds),
+  ],
 );
 
 // SM-2 state, one row per (user, lexeme or pattern). Sentences are not

@@ -78,6 +78,13 @@
       "when": 1791833530343,
       "tag": "0010_massive_loners",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791836769416,
+      "tag": "0011_unique_outlaw_kid",
+      "breakpoints": true
     }
   ]
 }

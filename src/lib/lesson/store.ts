@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { knowledge, lexemes, patterns, reviewLog, sentences, themes } from "@/lib/db/schema";
 import { applyAnswer, introducedState } from "./grade";
-import { targetKey, type KnowledgeState, type Target, type ThemeContent } from "./types";
+import { targetKey, type KnowledgeState, type Lexeme, type Pattern, type Sentence, type Target, type ThemeContent } from "./types";
 
 /** Lexemes and themes are visible when curated (no owner) or the learner's own. */
 const visibleLexeme = (userId: string) => or(isNull(lexemes.ownerId), eq(lexemes.ownerId, userId));
@@ -32,6 +32,58 @@ export async function loadAllContent(userId: string): Promise<ThemeContent> {
     lexemes: lexemeMap,
     patterns: new Map(patternRows.map((p) => [p.id, p])),
   };
+}
+
+/**
+ * Every word and grammar note the learner can look up, words in the order they
+ * are taught. Reads only which words each sentence uses, not the sentences, so
+ * it stays light however many sentences there are.
+ */
+export async function loadVocabulary(userId: string): Promise<{ lexemes: Lexeme[]; patterns: Pattern[] }> {
+  const [themeRows, useRows, lexemeRows, patternRows] = await Promise.all([
+    db.select({ id: themes.id }).from(themes).where(visibleTheme(userId)).orderBy(asc(themes.position)),
+    db
+      .select({ themeId: sentences.themeId, lexemeIds: sentences.lexemeIds })
+      .from(sentences)
+      .where(eq(sentences.retired, false))
+      .orderBy(asc(sentences.position)),
+    db.select().from(lexemes).where(visibleLexeme(userId)),
+    db.select().from(patterns).orderBy(asc(patterns.position)),
+  ]);
+  const themeOrder = new Map(themeRows.map((theme, index) => [theme.id, index]));
+  const lexemeMap = new Map(lexemeRows.map((l) => [l.id, l]));
+  const rank = (s: { themeId: string | null }) => (s.themeId ? themeOrder.get(s.themeId) : themeRows.length);
+  const taught = useRows
+    // The same sentences loadAllContent keeps.
+    .filter((s) => rank(s) !== undefined && s.lexemeIds.every((id) => lexemeMap.has(id)))
+    .sort((a, b) => rank(a)! - rank(b)!)
+    .flatMap((s) => s.lexemeIds);
+  return { lexemes: [...new Set(taught)].map((id) => lexemeMap.get(id)!), patterns: patternRows };
+}
+
+/**
+ * A few sentences that use a word or pattern, shortest first: the clearest
+ * illustration of a word is the one with least else in it.
+ */
+export async function loadExamples(userId: string, target: Target, limit: number): Promise<Sentence[]> {
+  const length = sql`jsonb_array_length(${sentences.tokens})`;
+  return db
+    .select()
+    .from(sentences)
+    .where(
+      and(
+        eq(sentences.retired, false),
+        target.kind === "lexeme"
+          ? // A word on its own illustrates nothing.
+            and(sql`${sentences.lexemeIds} @> ARRAY[${target.id}]::text[]`, sql`${length} > 1`)
+          : sql`${sentences.patternIds} @> ARRAY[${target.id}]::text[]`,
+        // Not from another learner's theme, nor using a word this learner cannot see.
+        sql`(${sentences.themeId} is null or exists (select 1 from ${themes} where ${themes.id} = ${sentences.themeId} and ${visibleTheme(userId)}))`,
+        sql`not exists (select 1 from unnest(${sentences.lexemeIds}) as used(id) where not exists (select 1 from ${lexemes} where ${lexemes.id} = used.id and ${visibleLexeme(userId)}))`,
+      ),
+    )
+    .orderBy(length, asc(sentences.generated), asc(sentences.position), asc(sentences.id))
+    .limit(limit);
 }
 
 /** One theme's ladder, plus the generated sentences built entirely from its words. */

@@ -32,7 +32,6 @@ export type ReferenceWord = {
   /** Null for curated words. */
   addedBy: "learner" | "app" | null;
   audioUrl: string;
-  examples: ReferenceExample[];
 };
 
 export type ReferencePattern = {
@@ -40,7 +39,6 @@ export type ReferencePattern = {
   title: string;
   summary: string;
   met: boolean;
-  examples: ReferenceExample[];
 };
 
 /** Lowercase, and without the marks on â so that typing "darim" finds dârim. */
@@ -55,7 +53,12 @@ const haystack = (parts: (string | null)[]) => {
   return `${foldLatin(text)} ${normalizeForCompare(text)}`;
 };
 
-function Examples({ examples }: { examples: ReferenceExample[] }) {
+/** Undefined while they are on their way; null when they could not be fetched. */
+type Loaded = ReferenceExample[] | null | undefined;
+
+function Examples({ examples }: { examples: Loaded }) {
+  if (examples === undefined) return <p className="text-xs text-ink/50">Finding examples…</p>;
+  if (examples === null) return <p className="text-xs text-crimson">Could not load the examples. Close and reopen to try again.</p>;
   if (examples.length === 0) return <p className="text-xs text-ink/50">No example sentences yet.</p>;
   return (
     <ul className="flex flex-col gap-1.5">
@@ -144,12 +147,28 @@ export function Reference({ words, patterns }: { words: ReferenceWord[]; pattern
   const unlocked = useRef(false);
   const router = useRouter();
 
-  const toggle = (key: string) =>
+  // Examples are fetched the first time an entry is opened, and kept.
+  const [examples, setExamples] = useState<ReadonlyMap<string, Loaded>>(new Map());
+  const requested = useRef(new Set<string>());
+
+  const toggle = (key: string) => {
     setOpen((current) => {
       const next = new Set(current);
       if (!next.delete(key)) next.add(key);
       return next;
     });
+    if (requested.current.has(key)) return;
+    requested.current.add(key);
+    const [kind, id] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
+    fetch(`/api/reference/examples?${new URLSearchParams({ kind, id })}`)
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(`examples ${response.status}`))))
+      .then((data: { examples: ReferenceExample[] }) => data.examples)
+      .catch(() => {
+        requested.current.delete(key);
+        return null;
+      })
+      .then((loaded) => setExamples((current) => new Map(current).set(key, loaded)));
+  };
 
   const remove = async (word: ReferenceWord) => {
     if (!window.confirm(`Remove ${word.translit} ("${word.gloss}") and your progress on it?`)) return;
@@ -181,7 +200,7 @@ export function Reference({ words, patterns }: { words: ReferenceWord[]; pattern
     return [
       { kind: "heading", key: "heading:words", label: `Words (${shownWords.length})` },
       ...(shownWords.length === 0 ? [{ kind: "empty" as const, key: "empty:words", label: "No words match." }] : []),
-      ...shownWords.map(({ word }) => ({ kind: "word" as const, key: `word:${word.id}`, word })),
+      ...shownWords.map(({ word }) => ({ kind: "word" as const, key: `lexeme:${word.id}`, word })),
       { kind: "heading", key: "heading:patterns", label: `Grammar (${shownPatterns.length})` },
       ...(shownPatterns.length === 0
         ? [{ kind: "empty" as const, key: "empty:patterns", label: "No grammar notes match." }]
@@ -240,7 +259,7 @@ export function Reference({ words, patterns }: { words: ReferenceWord[]; pattern
             </div>
           )}
           <p className="text-sm leading-relaxed text-ink/75">{pattern.summary}</p>
-          <Examples examples={pattern.examples} />
+          <Examples examples={examples.get(row.key)} />
         </Entry>
       );
     }
@@ -304,7 +323,7 @@ export function Reference({ words, patterns }: { words: ReferenceWord[]; pattern
           )}
         </div>
         {word.note && <p className="text-sm text-ink/70">{word.note}</p>}
-        <Examples examples={word.examples} />
+        <Examples examples={examples.get(row.key)} />
       </Entry>
     );
   };
