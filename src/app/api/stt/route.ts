@@ -1,5 +1,6 @@
 import { toFile } from "openai";
 
+import { auth } from "@/lib/auth";
 import { CHAT_MODEL, errorResponse, openai, requireApiKey } from "@/lib/openai";
 import { assessTranscript } from "@/lib/transcript";
 
@@ -31,14 +32,31 @@ const VERBATIM_PROMPT = [
 
 export const STT_MODEL = process.env.OPENAI_STT_MODEL ?? "gpt-4o-transcribe";
 
+/**
+ * One spoken turn. The recorder sends 16 kHz mono 16-bit WAV, about 32 kB a
+ * second, so this is a little over a minute of speech.
+ */
+const MAX_AUDIO_BYTES = 2.5 * 1024 * 1024;
+
 export async function POST(request: Request): Promise<Response> {
+  // Signed-in only: every call spends money on transcription.
+  const session = await auth();
+  if (!session?.user?.id) return Response.json({ error: "not signed in" }, { status: 401 });
+
   const missingKey = requireApiKey();
   if (missingKey) return missingKey;
 
   try {
+    // Refused from the header where there is one, before the body is read.
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_AUDIO_BYTES) {
+      return Response.json({ error: "audio is too long" }, { status: 413 });
+    }
     const audio = Buffer.from(await request.arrayBuffer());
     if (audio.byteLength === 0) {
       return Response.json({ error: "empty audio body" }, { status: 400 });
+    }
+    if (audio.byteLength > MAX_AUDIO_BYTES) {
+      return Response.json({ error: "audio is too long" }, { status: 413 });
     }
 
     const started = Date.now();
