@@ -39,9 +39,11 @@ Paths mirror where each file lived under the repo root.
   imports of its own.
 - `src/lib/srs.ts`, `register.ts`, `transcript.ts`, the TTS/STT providers and
   routes, auth, and the design system stayed in `src/`.
-- The database tables this code used (`Conversation`, `Turn`, `Correction`,
-  `Topic`, `PlacementSession`, `PlacementResponse`) are still in
-  `src/lib/db/schema.ts` until the new schema replaces them.
+- The database tables this code used (`Item`, `UserItem`, `Topic`,
+  `Conversation`, `Turn`, `Correction`, `PlacementSession`,
+  `PlacementResponse`) and the `User.level` column are gone: migration
+  `0016_drop_conversation_v1` drops them. Their definitions are in
+  `src/lib/db/schema.ts` at any commit up to `c5d36a2`.
 
 ## Worth remembering
 
