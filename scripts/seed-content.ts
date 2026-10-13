@@ -11,8 +11,8 @@ import "./load-env.ts";
 import { sql } from "drizzle-orm";
 import { wordClip } from "../src/lib/audio-key.ts";
 import { registerClips } from "../src/lib/audio-store.ts";
-import { buildTheme, validateTheme } from "../src/lib/content/build.ts";
-import { THEMES } from "../src/lib/content/shopping.ts";
+import { buildTheme, validateCourse, validateTheme } from "../src/lib/content/build.ts";
+import { PATTERNS, THEMES } from "../src/lib/content/index.ts";
 import { db } from "../src/lib/db/index.ts";
 import { lexemes, patterns, sentences, themes } from "../src/lib/db/schema.ts";
 import { GRAMMAR_SPINE } from "../src/lib/lesson/forms.ts";
@@ -21,6 +21,10 @@ import { sentenceClip } from "../src/lib/lesson/plan.ts";
 const excluded = (column: string) => sql.raw(`excluded."${column}"`);
 
 async function main() {
+  // Themes share words and patterns by id; a clash between two of them would be written over silently.
+  const clashes = validateCourse(THEMES);
+  if (clashes.length > 0) throw new Error(`nothing seeded —\n  ${clashes.join("\n  ")}`);
+
   // Grammar the expansion author teaches later; the rows must exist before it does.
   await db
     .insert(patterns)
@@ -58,7 +62,8 @@ async function main() {
     if (content.patterns.size > 0) {
       await db
         .insert(patterns)
-        .values(seed.patterns.map((p, index) => ({ ...p, position: index })))
+        // Its place in the whole course, so a pattern two themes teach is not moved by whichever is seeded last.
+        .values(seed.patterns.map((p) => ({ ...p, position: PATTERNS.findIndex((other) => other.id === p.id) })))
         .onConflictDoUpdate({
           target: patterns.id,
           set: Object.fromEntries(["title", "summary", "position"].map((c) => [c, excluded(c)])),

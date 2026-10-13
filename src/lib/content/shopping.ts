@@ -1,9 +1,11 @@
+import { P, W } from "./common";
 import type { ThemeSeed } from "./types";
 
 /**
- * Hand-written first theme. Everything is spoken Tehrani; `literary` records
- * the book form where the two differ. Verb forms are separate lexemes (the
- * learner knows داریم before they know دارم) grouped by `lemma`.
+ * The first theme written, and the model for the others. Everything is spoken
+ * Tehrani; `literary` records the book form where the two differ. Verb forms
+ * are separate lexemes (the learner knows داریم before they know دارم) grouped
+ * by `lemma`. Words other themes also teach live in ./common.
  *
  * Not yet reviewed by a native speaker.
  */
@@ -15,33 +17,26 @@ export const SHOPPING: ThemeSeed = {
   position: 0,
   lexemes: [
     { id: "havij", fa: "هویج", voc: "هَویج", translit: "havij", gloss: "carrot" },
-    { id: "darim", fa: "داریم", voc: "داریم", translit: "dârim", gloss: "we have", lemma: "داشتن", verbPerson: "1pl" },
-    { id: "ma", fa: "ما", voc: "ما", translit: "mâ", gloss: "we", subjectPronoun: "1pl" },
+    W.darim,
+    W.ma,
     { id: "sib", fa: "سیب", voc: "سیب", translit: "sib", gloss: "apple" },
-    {
-      id: "o",
-      fa: "و",
-      voc: "و",
-      translit: "o",
-      gloss: "and",
-      note: "Written و and read \"va\" in formal Persian; in speech it is a quick \"o\" attached to the word before it.",
-    },
-    { id: "daram", fa: "دارم", voc: "دارَم", translit: "dâram", gloss: "I have", lemma: "داشتن", verbPerson: "1sg" },
-    { id: "man", fa: "من", voc: "مَن", translit: "man", gloss: "I", subjectPronoun: "1sg" },
-    { id: "nun", fa: "نون", voc: "نون", translit: "nun", gloss: "bread", literary: "نان" },
-    { id: "dari", fa: "داری", voc: "داری", translit: "dâri", gloss: "you have", lemma: "داشتن", verbPerson: "2sg" },
-    { id: "are", fa: "آره", voc: "آرِه", translit: "âre", gloss: "yeah", literary: "بله" },
-    { id: "to", fa: "تو", voc: "تُو", translit: "to", gloss: "you (informal)", subjectPronoun: "2sg" },
-    { id: "na", fa: "نه", voc: "نَه", translit: "na", gloss: "no" },
+    W.o,
+    W.daram,
+    W.man,
+    W.nun,
+    W.dari,
+    W.are,
+    W.to,
+    W.na,
     { id: "karafs", fa: "کرفس", voc: "کَرَفس", translit: "karafs", gloss: "celery" },
     { id: "az-ghabl", fa: "از قبل", voc: "اَز قَبل", translit: "az ghabl", gloss: "already" },
-    { id: "mikham", fa: "می‌خوام", voc: "می‌خوام", translit: "mikhâm", gloss: "I want", lemma: "خواستن", literary: "می‌خواهم", verbPerson: "1sg" },
-    { id: "ye", fa: "یه", voc: "یِه", translit: "ye", gloss: "a / one", literary: "یک" },
+    W.mikham,
+    W.ye,
     { id: "kilu", fa: "کیلو", voc: "کیلو", translit: "kilu", gloss: "kilo" },
     { id: "do", fa: "دو", voc: "دُو", translit: "do", gloss: "two" },
-    { id: "ham", fa: "هم", voc: "هَم", translit: "ham", gloss: "also / too" },
-    { id: "chande", fa: "چنده", voc: "چَندِه", translit: "chande", gloss: "how much is it?", literary: "چند است" },
-    { id: "in", fa: "این", voc: "این", translit: "in", gloss: "this" },
+    W.ham,
+    W.chande,
+    W.in,
     {
       id: "ro",
       fa: "رو",
@@ -52,7 +47,7 @@ export const SHOPPING: ThemeSeed = {
       note: "No English equivalent. It follows a specific object: این رو می‌خوام, \"I want this one\".",
     },
     { id: "gerun", fa: "گرون", voc: "گِرون", translit: "gerun", gloss: "expensive", literary: "گران" },
-    { id: "kheyli", fa: "خیلی", voc: "خِیلی", translit: "kheyli", gloss: "very" },
+    W.kheyli,
     { id: "taze", fa: "تازه", voc: "تازِه", translit: "tâze", gloss: "fresh" },
     {
       id: "darin",
@@ -64,7 +59,7 @@ export const SHOPPING: ThemeSeed = {
       literary: "دارید",
       verbPerson: "2pl",
     },
-    { id: "mamnun", fa: "ممنون", voc: "مَمنون", translit: "mamnun", gloss: "thanks" },
+    W.mamnun,
     {
       id: "bi-zahmat",
       fa: "بی‌زحمت",
@@ -74,34 +69,9 @@ export const SHOPPING: ThemeSeed = {
       note: "Literally \"without trouble\". The everyday way to soften a request; لطفاً is more formal.",
     },
     { id: "befarmayin", fa: "بفرمایین", voc: "بِفَرمایین", translit: "befarmâyin", gloss: "here you go", literary: "بفرمایید" },
-    { id: "salam", fa: "سلام", voc: "سَلام", translit: "salâm", gloss: "hello" },
+    W.salam,
   ],
-  patterns: [
-    {
-      id: "question",
-      title: "Yes/no questions",
-      summary:
-        "A statement becomes a yes/no question just by raising your voice at the end. The words and their order do not change: هویج داری (you have carrots) → هویج داری؟ (do you have carrots?).",
-    },
-    {
-      id: "negation",
-      title: "Saying \"not\"",
-      summary:
-        "Put نَـ (na-) on the front of the verb: دارم (I have) → ندارم (I don't have), داریم → نداریم.",
-    },
-    {
-      id: "copula",
-      title: "\"Is\" as an ending",
-      summary:
-        "Spoken Persian says \"is\" with a short ـه (-e) on the end of the last word: سیب (apple) → این سیبه (this is an apple). Book Persian writes است instead.",
-    },
-    {
-      id: "ezafe",
-      title: "Linking words (ezâfe)",
-      summary:
-        "To attach a describing word or an owner to a noun, add a short -e sound to the noun: سیبِ من (sib-e man, my apple), نونِ تازه (nun-e tâze, fresh bread). It is spoken but almost never written.",
-    },
-  ],
+  patterns: [P.question, P.negation, P.copula, P.ezafe],
   sentences: [
     { english: "Carrot.", tokens: ["havij"], note: "Persian usually uses the singular where English says \"carrots\"." },
     { english: "We have carrots.", tokens: ["havij", "darim"], note: "The verb comes last." },
@@ -182,5 +152,3 @@ export const SHOPPING: ThemeSeed = {
     },
   ],
 };
-
-export const THEMES: ThemeSeed[] = [SHOPPING];
