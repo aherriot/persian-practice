@@ -13,9 +13,15 @@ const displayLatin = Cinzel({
   variable: "--font-display-latin",
   subsets: ["latin"],
   weight: ["500", "700"],
+  preload: false,
 });
 
 // Latin body — clean, warm geometric sans, quiet next to the display face.
+// The one font preloaded: it is on screen the moment any page paints. The
+// others are fetched when something first uses them — a heading may not come
+// until a page has finished loading its data, and Persian not until a lesson
+// starts — and a preload that goes unused for a few seconds is wasted, and
+// warned about in the console.
 const bodyLatin = Manrope({
   variable: "--font-body-latin",
   subsets: ["latin"],
@@ -28,6 +34,7 @@ const displayFa = Noto_Kufi_Arabic({
   variable: "--font-display-fa",
   subsets: ["arabic"],
   weight: ["500", "700"],
+  preload: false,
 });
 
 // Persian body — Vazirmatn, purpose-built for Persian UI legibility at small
@@ -36,6 +43,7 @@ const bodyFa = Vazirmatn({
   variable: "--font-body-fa",
   subsets: ["arabic"],
   weight: ["400", "500", "600"],
+  preload: false,
 });
 
 export const metadata: Metadata = {
