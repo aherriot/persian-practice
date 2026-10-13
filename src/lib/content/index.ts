@@ -1,5 +1,6 @@
 import { FAMILY } from "./family";
 import { FOOD } from "./food";
+import { GETTING_AROUND } from "./getting-around";
 import { GREETINGS } from "./greetings";
 import { SHOPPING } from "./shopping";
 import type { PatternSeed, ThemeSeed } from "./types";
@@ -9,7 +10,7 @@ import type { PatternSeed, ThemeSeed } from "./types";
  * across all themes takes new material from the earliest unfinished one
  * (`ladderOrder` in lesson/store.ts), so this order is the default course.
  */
-export const THEMES: ThemeSeed[] = [GREETINGS, SHOPPING, FOOD, FAMILY].sort((a, b) => a.position - b.position);
+export const THEMES: ThemeSeed[] = [GREETINGS, SHOPPING, FOOD, FAMILY, GETTING_AROUND].sort((a, b) => a.position - b.position);
 
 /**
  * The curated grammar, each pattern once, in the order the course first
