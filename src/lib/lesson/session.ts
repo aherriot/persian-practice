@@ -59,7 +59,7 @@ export async function loadSession(
 
   const [known, patternRows] = await Promise.all([loadKnowledge(userId), db.select().from(patterns)]);
 
-  const due = dueTargets(known, now, maxReview).map(([key]) => key);
+  const due = dueTargets(known, now, maxReview, opts.review).map(([key]) => key);
   const dueIds = (kind: "lexeme" | "pattern") =>
     textArray(due.filter((key) => key.startsWith(`${kind}:`)).map((key) => key.slice(kind.length + 1)));
 

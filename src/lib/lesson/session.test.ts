@@ -353,3 +353,19 @@ test("how often a sentence was answered is counted for this learner only", async
     assert.equal(plan.exercises[0].sentence.id, "gen-apple");
   }
 });
+
+// --- Sessions about chosen things ---
+
+test("a session asked to review chosen words reviews those, due or not, and nothing else", async () => {
+  await addCourse();
+  // Nothing is due for a week.
+  await know(ME, ["apple", "pear", "plum"], { dueInDays: 7 });
+  for (const seed of SEEDS) {
+    assert.equal((await loadSession(ME, { now: NOW, seed, maxNew: 0 })).reviewCount, 0);
+    const plan = await loadSession(ME, { now: NOW, seed, maxNew: 0, review: ["lexeme:plum", "lexeme:never-met"] });
+    assert.deepEqual(reviewed(plan), ["plum"]);
+    assert.deepEqual(introduced(plan), []);
+    // Plum only appears with apple and pear, which are known: that is the sentence used.
+    assert.equal(plan.exercises[0].sentence.id, "fruit-3");
+  }
+});

@@ -1,5 +1,6 @@
 import { VOWEL_FADE_REPS } from "./plan";
 import type { KnowledgeState, ThemeContent } from "./types";
+import { byWeakness, weaknessOf, type Weakness } from "./weak";
 
 /**
  * Where one word or grammar point stands for a learner.
@@ -26,8 +27,11 @@ export type JourneyItem = {
   /** What a word means; null for a grammar point. */
   gloss: string | null;
   stage: Stage;
+  /** Why it counts as weak, if it does (see weak.ts). */
+  weakness: Weakness | null;
   /** How many times it has been answered wrong. */
   lapses: number;
+  difficulty: number;
   intervalDays: number;
   dueAt: Date;
 };
@@ -37,8 +41,8 @@ export type Journey = {
   words: number;
   patterns: number;
   stages: Record<Stage, number>;
-  /** Missed at least once and not yet established; the shakiest first. */
-  struggling: JourneyItem[];
+  /** Everything weak (see weak.ts), the weakest first. */
+  struggling: (JourneyItem & { weakness: Weakness })[];
   /** Established, longest gap between reviews first. */
   strongest: JourneyItem[];
   /** Reviews falling due: already, within a day, and within a week (each includes the one before). */
@@ -46,7 +50,6 @@ export type Journey = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const STAGE_ORDER: Stage[] = ["shaky", "new", "learning", "established"];
 
 /** Everything the learner has met, summarised. Knowledge of things no longer in the course is ignored. */
 export function summariseJourney(content: Pick<ThemeContent, "lexemes" | "patterns">, knowledge: Map<string, KnowledgeState>, now: Date): Journey {
@@ -64,7 +67,9 @@ export function summariseJourney(content: Pick<ThemeContent, "lexemes" | "patter
       label: lexeme?.translit ?? pattern!.title,
       gloss: lexeme?.gloss ?? null,
       stage: stageOf(state),
+      weakness: weaknessOf(state),
       lapses: state.lapses,
+      difficulty: state.difficulty,
       intervalDays: state.intervalDays,
       dueAt: state.dueAt,
     });
@@ -79,9 +84,7 @@ export function summariseJourney(content: Pick<ThemeContent, "lexemes" | "patter
     words: items.filter((item) => item.kind === "lexeme").length,
     patterns: items.filter((item) => item.kind === "pattern").length,
     stages,
-    struggling: items
-      .filter((item) => item.lapses > 0 && item.stage !== "established")
-      .sort((a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage) || b.lapses - a.lapses),
+    struggling: items.filter((item): item is JourneyItem & { weakness: Weakness } => item.weakness !== null).sort(byWeakness),
     strongest: items
       .filter((item) => item.stage === "established")
       .sort((a, b) => b.intervalDays - a.intervalDays || a.lapses - b.lapses),

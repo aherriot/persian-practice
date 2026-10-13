@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth/session";
 import { signOut } from "@/lib/auth";
 import { HISTORY_DAYS, loadActivityHours } from "@/lib/lesson/history";
 import { loadKnowledge, themeSummaries } from "@/lib/lesson/store";
+import { weakTargets } from "@/lib/lesson/weak";
 import { actionClass } from "./styles";
 import { Today } from "./Today";
 
@@ -14,6 +15,7 @@ export default async function DashboardPage() {
   const [knowledge, hours] = await Promise.all([loadKnowledge(user.id), loadActivityHours(user.id, now)]);
   const themes = await themeSummaries(user.id, now, knowledge);
   const due = [...knowledge.values()].filter((state) => state.dueAt <= now).length;
+  const weak = weakTargets(knowledge).length;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-8 bg-paper px-5 py-8">
@@ -33,6 +35,11 @@ export default async function DashboardPage() {
 
       <Today hours={hours} historyDays={HISTORY_DAYS} due={due} met={knowledge.size}>
         <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-ink/10 pt-3">
+          {weak > 0 && (
+            <Link href="/practice/weak" className="text-sm font-medium text-cobalt underline">
+              Practise your {weak} weak {weak === 1 ? "one" : "ones"}
+            </Link>
+          )}
           <Link href="/progress" className="text-sm font-medium text-cobalt underline">
             See your progress
           </Link>
