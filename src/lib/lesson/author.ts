@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { openai } from "@/lib/openai";
 import type { SentenceDraft } from "./assemble";
+import { Proposal } from "./corrections";
 import { FORM_HELP, FORMS, formsFor, FORM_PATTERN, type Form } from "./forms";
 import type { Lexeme, Person } from "./types";
 
@@ -170,6 +171,51 @@ Entries already in the course, for style:
 ${examples.map((w) => `${w.fa} | ${w.voc} | ${w.translit} | ${w.gloss}`).join("\n")}`;
   const user = hint ? `${input}\n\nWhat the learner says it means or where they heard it: ${hint}` : input;
   return askJson("word", WordDraft, system, user);
+}
+
+// --- Corrections ---
+
+/**
+ * Turns a complaint about a word or sentence, in the person's own words, into
+ * the smallest change that answers it. `refused` is an earlier answer that
+ * could not be applied and why, for a second try.
+ */
+export async function draftCorrection(subject: string, complaint: string, refused?: { proposal: Proposal; problems: string[] }): Promise<Proposal> {
+  const system = `You look after the content of a course in spoken Tehrani Persian. ${REGISTER}
+
+Someone using the course says something in it is wrong: a spelling, a pronunciation, a recording, a translation, or the way a sentence is put. They wrote in their own words and may be brief. Work out what they mean and make the smallest change that puts it right. Change nothing they did not complain about.
+
+They are usually reporting what they heard or what a native speaker told them, so take them at their word. Only if what they ask for would plainly be wrong Persian, or you cannot tell what they mean, change nothing and say why in the summary.
+
+How the content is written:
+${WORD_FIELDS}
+
+What you return:
+- summary: one or two plain sentences to the person saying what you will change, or why you will change nothing. No field names.
+- words: dictionary entries to change, each by its id. Give only the fields that change and null for the rest. For literary and note, an empty string removes it. A change to a word's fa, voc or translit is carried into every sentence the word is in, so do not repeat it under sentence.
+- sentence: only when the complaint is about a sentence. english and note: the new text, or null to leave it (an empty note removes it). tokens: null unless the Persian of this sentence itself has to change (a word in the wrong form, the wrong order, a word that should not be there); then give every word of the sentence again in its new order, each with the id of its dictionary entry, its fa, voc and translit as written in this sentence, and whether a comma follows it. The sentence can only use the words it already has: it cannot gain a word.
+- audio: only when the written pronunciation (translit) is right and it is the recording that says it wrongly or oddly. clip says which recording, "sentence" or "word" (with wordId); reason is "word" (a wrong word or vowel), "accent", "pause" (an unnatural break) or "other". The recording is then made again. If instead the written pronunciation is itself wrong, correct translit and voc and leave audio null: a new recording is made from the corrected text.
+- retire: true only for a sentence the app wrote that is wrong in a way no small change can mend, such as needing a word it does not have. It is then no longer shown. Otherwise false.
+
+voc must be exactly the letters of fa with vowel marks added, and translit must have one word for each word of fa, using only lower-case letters, â, a hyphen before a suffix or linking vowel, and an apostrophe for ع.`;
+
+  const user = `${subject}
+
+What the person wrote:
+${complaint}${
+    refused
+      ? `
+
+You answered before with this, and it could not be applied:
+${JSON.stringify(refused.proposal)}
+
+Because:
+${refused.problems.map((problem) => `- ${problem}`).join("\n")}
+
+Answer again in a way that avoids this. If it cannot be avoided, change nothing and explain in the summary what stands in the way.`
+      : ""
+  }`;
+  return askJson("correction", Proposal, system, user);
 }
 
 // --- New material ---
