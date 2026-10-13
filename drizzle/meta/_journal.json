@@ -99,6 +99,13 @@
       "when": 1791849517310,
       "tag": "0013_fsrs",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791849799721,
+      "tag": "0014_review_log_answer",
+      "breakpoints": true
     }
   ]
 }

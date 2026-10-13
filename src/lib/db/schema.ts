@@ -209,6 +209,10 @@ export const reviewLog = pgTable(
     sentenceId: text("sentenceId"),
     exercise: text("exercise").notNull(),
     correct: boolean("correct").notNull(),
+    // What the exercise was testing, as "lexeme:<id>" or "pattern:<id>"; null for ungraded practice.
+    target: text("target"),
+    // The wrong answer given: the option picked, or the words built in order. Null when right.
+    picked: text("picked"),
     createdAt: createdAt(),
   },
   (t) => [

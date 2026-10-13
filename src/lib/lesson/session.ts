@@ -8,9 +8,11 @@ import {
   knownIds,
   ladderOrder,
   loadKnowledge,
+  sameMeaning,
   textArray,
   visibleLexeme,
   visibleSentence,
+  wordsOf,
 } from "./store";
 import type { SessionPlan } from "./types";
 
@@ -111,6 +113,7 @@ export async function loadSession(
   const chosen = [...ladderRows.map((row) => row.sentence), ...poolRows.map((row) => row.sentence)];
   const chosenIds = chosen.map((s) => s.id);
   const usedLexemes = [...new Set(chosen.flatMap((s) => s.lexemeIds))];
+  const meanings = [...new Set(chosen.map((s) => s.english))];
   const sample = (ids: ReturnType<typeof knownIds>, limit: number) =>
     sql`${lexemes.id} in (select id from ${ids} as candidates(id) order by random() limit ${limit})`;
 
@@ -125,6 +128,8 @@ export async function loadSession(
               visibleLexeme(userId),
               or(
                 inArray(lexemes.id, usedLexemes),
+                // The words of other ways to say the same things, so those are accepted in full.
+                inArray(lexemes.id, wordsOf(sameMeaning(userId, meanings))),
                 // Other forms of the same verbs, for "pick the missing word".
                 sql`${lexemes.lemma} in (select l."lemma" from ${lexemes} l where l."id" in ${usedLexemes} and l."lemma" is not null)`,
                 // Subject pronouns, which a correct answer may add or leave out.
@@ -135,13 +140,9 @@ export async function loadSession(
               ),
             ),
           ),
-    // Other ways of saying the same thing, which sentence-building has to accept.
-    chosen.length === 0
-      ? []
-      : db
-          .select()
-          .from(sentences)
-          .where(and(scope, inArray(sentences.english, [...new Set(chosen.map((s) => s.english))]), notInArray(sentences.id, chosenIds))),
+    // Other ways of saying the same thing, which sentence-building has to accept:
+    // from anywhere in the course, the same ones the answer is marked against (recordAnswer).
+    chosen.length === 0 ? [] : db.select().from(sentences).where(and(sameMeaning(userId, meanings), notInArray(sentences.id, chosenIds))),
   ]);
 
   return planSession(
