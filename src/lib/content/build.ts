@@ -63,7 +63,7 @@ export function buildTheme(seed: ThemeSeed): ThemeContent {
  * lower-case Latin with â for the long a, a hyphen before a suffix or linking
  * vowel, an apostrophe for ع, and single spaces between words.
  */
-const TRANSLIT = /^[a-zâ]+(?:['-][a-zâ]+)*(?: [a-zâ]+(?:['-][a-zâ]+)*)*$/;
+export const TRANSLIT = /^[a-zâ]+(?:['-][a-zâ]+)*(?: [a-zâ]+(?:['-][a-zâ]+)*)*$/;
 
 /** Problems that would break the "one new thing at a time" promise. Empty = valid. */
 export function validateTheme(seed: ThemeSeed): string[] {
