@@ -5,14 +5,17 @@ import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { reviewLog } from "@/lib/db/schema";
 import { FRONTIER, MAX_SHAKY } from "@/lib/lesson/expand";
-import { loadActivityHours } from "@/lib/lesson/history";
+import { summariseConfusions } from "@/lib/lesson/confusions";
+import { CONFUSION_DAYS, loadActivityHours, loadConfusions } from "@/lib/lesson/history";
 import { summariseJourney, type JourneyItem, type Stage } from "@/lib/lesson/journey";
 import { isReadyForMore, measureProgress } from "@/lib/lesson/progress";
 import { loadCourse, loadKnowledge } from "@/lib/lesson/store";
+import type { Lexeme } from "@/lib/lesson/types";
 import type { Weakness } from "@/lib/lesson/weak";
 import { Activity } from "./Activity";
 
 const LIST = 8;
+const MIXED_UP = 6;
 
 const STAGES: { stage: Stage; label: string; colour: string; meaning: string }[] = [
   { stage: "shaky", label: "Needs work", colour: "bg-terracotta", meaning: "wrong the last time it came up" },
@@ -58,6 +61,20 @@ function Stat({ value, label }: { value: ReactNode; label: string }) {
   );
 }
 
+function Word({ lexeme }: { lexeme: Lexeme }) {
+  return (
+    <div className="flex flex-col">
+      <span dir="rtl" lang="fa" className="self-start text-2xl leading-[1.8] text-ink">
+        {lexeme.voc}
+      </span>
+      <span className="text-sm text-ink">
+        <span className="font-semibold">{lexeme.translit}</span>
+        <span className="text-ink/65"> — {lexeme.gloss}</span>
+      </span>
+    </div>
+  );
+}
+
 function Item({ item, children }: { item: JourneyItem; children: ReactNode }) {
   return (
     <li className="flex items-center justify-between gap-3 border-t border-ink/10 py-2 first:border-t-0 first:pt-0 last:pb-0">
@@ -84,10 +101,11 @@ function Item({ item, children }: { item: JourneyItem; children: ReactNode }) {
 export default async function ProgressPage() {
   const user = await requireUser();
   const now = new Date();
-  const [content, knowledge, hours, exerciseRows] = await Promise.all([
+  const [content, knowledge, hours, confusionRows, exerciseRows] = await Promise.all([
     loadCourse(user.id),
     loadKnowledge(user.id),
     loadActivityHours(user.id, now),
+    loadConfusions(user.id, now),
     db
       .select({ exercise: reviewLog.exercise, total: sql<number>`count(*)::int`, correct: sql<number>`count(*) filter (where ${reviewLog.correct})::int` })
       .from(reviewLog)
@@ -97,6 +115,8 @@ export default async function ProgressPage() {
 
   const journey = summariseJourney(content, knowledge, now);
   const progress = measureProgress(content.onLadder, knowledge);
+  // Once could be a slip of the finger; twice is a mix-up.
+  const confusions = summariseConfusions(confusionRows, content.lexemes, knowledge).filter((c) => c.times >= 2);
   const exercises = exerciseRows.filter((row) => row.total > 0).sort((a, b) => a.correct / a.total - b.correct / b.total);
   const answered = exercises.reduce((sum, row) => sum + row.total, 0);
   const met = journey.items.length;
@@ -166,6 +186,36 @@ export default async function ProgressPage() {
                 Practise these
               </Link>
             </div>
+          </>
+        )}
+      </Section>
+
+      <Section title="What you mix up">
+        {confusions.length === 0 ? (
+          <p className="text-sm text-ink/70">
+            No pattern yet. When you pick the same wrong answer for a word more than once, the pair is shown here.
+          </p>
+        ) : (
+          <>
+            <ul>
+              {confusions.slice(0, MIXED_UP).map(({ target, picked, times: n }) => (
+                <li key={`${target.id} ${picked.id}`} className="flex flex-col gap-1.5 border-t border-ink/10 py-3 first:border-t-0 first:pt-0 last:pb-0">
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                    <Word lexeme={target} />
+                    <span className="text-xs text-ink/45">not</span>
+                    <Word lexeme={picked} />
+                  </div>
+                  <p className="text-xs text-ink/55">
+                    Asked about <span className="font-medium text-ink/80">{target.translit}</span>, you chose{" "}
+                    <span className="font-medium text-ink/80">{picked.translit}</span> {times(n)}.
+                  </p>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-ink/55">
+              From the last {CONFUSION_DAYS} days. Each pair is offered against the other in practice, so you get to
+              tell them apart.
+            </p>
           </>
         )}
       </Section>

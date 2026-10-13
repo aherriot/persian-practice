@@ -369,3 +369,20 @@ test("a session asked to review chosen words reviews those, due or not, and noth
     assert.equal(plan.exercises[0].sentence.id, "fruit-3");
   }
 });
+
+test("a word the learner picked wrongly before is offered again as a wrong answer", async () => {
+  await addCourse();
+  await know(ME, ["apple", "pear", "plum", "fig"], { repetitions: 0 });
+  // Asked what apple means, this learner chose tea's meaning.
+  await db.insert(reviewLog).values({ userId: ME, exercise: "word", correct: false, target: "lexeme:apple", picked: "gloss tea" });
+  let asked = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    const plan = await loadSession(ME, { now: NOW, seed, maxNew: 0, themeId: "fruit" });
+    for (const e of plan.exercises) {
+      if (e.type !== "choice" || e.variant !== "word" || e.primary?.id !== "apple") continue;
+      assert.ok(e.options.includes("gloss tea"), `seed ${seed}: ${e.options.join(", ")}`);
+      asked++;
+    }
+  }
+  assert.ok(asked > 3, `apple's meaning was asked ${asked} times`);
+});

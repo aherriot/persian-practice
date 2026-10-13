@@ -32,6 +32,11 @@ export type PlanOptions = {
   seen?: Map<string, number>;
   /** Meanings to offer as wrong answers. Defaults to the content's own sentences. */
   distractors?: Distractor[];
+  /**
+   * For a word, the words this learner has mixed it up with (see confusions.ts).
+   * Offered first as wrong answers when that word is asked about.
+   */
+  confusions?: Map<string, string[]>;
   /** Sentences outside the content that may say the same thing as one inside it, in other words. */
   alternates?: Sentence[];
 };
@@ -147,6 +152,13 @@ export function planSession(
     return { options, answer: options.indexOf(correct) };
   };
 
+  /**
+   * The words the learner has mixed this one up with, where the session has
+   * them. Two at most, so one of the wrong answers still changes each time.
+   */
+  const confusedWith = (lexemeId: string) =>
+    (opts.confusions?.get(lexemeId) ?? []).flatMap((id) => content.lexemes.get(id) ?? []).slice(0, 2);
+
   const meaningChoice = (s: Sentence, primary: Target | null, variant: "listen" | "read"): ChoiceExercise => {
     const seen = new Set([s.english]);
     const others = shuffle(distractors)
@@ -159,9 +171,8 @@ export function planSession(
 
   const wordChoice = (s: Sentence, lexemeId: string): ChoiceExercise => {
     const lexeme = content.lexemes.get(lexemeId)!;
-    const glosses = shuffle([...content.lexemes.values()])
-      .filter((l) => l.gloss !== lexeme.gloss)
-      .map((l) => l.gloss);
+    const mixedUp = confusedWith(lexemeId).map((l) => l.gloss);
+    const glosses = [...mixedUp, ...shuffle([...content.lexemes.values()]).map((l) => l.gloss)].filter((gloss) => gloss !== lexeme.gloss);
     return {
       type: "choice",
       variant: "word",
@@ -178,9 +189,10 @@ export function planSession(
     const correct = s.tokens[tokenIndex].fa;
     const lexeme = content.lexemes.get(lexemeId)!;
     const pool = shuffle([...content.lexemes.values()]).filter((l) => l.fa !== correct && l.id !== lexemeId);
-    // Other forms of the same verb first, then words the learner has met.
+    // Words mixed up with this one before, other forms of the same verb, then words the learner has met.
+    const mixedUp = new Set(confusedWith(lexemeId).map((l) => l.id));
     const rank = (l: (typeof pool)[number]) =>
-      lexeme.lemma && l.lemma === lexeme.lemma ? 0 : known.has(`lexeme:${l.id}`) ? 1 : 2;
+      mixedUp.has(l.id) ? -1 : lexeme.lemma && l.lemma === lexeme.lemma ? 0 : known.has(`lexeme:${l.id}`) ? 1 : 2;
     const distractors = pool.sort((a, b) => rank(a) - rank(b)).map((l) => l.fa);
     return {
       type: "choice",

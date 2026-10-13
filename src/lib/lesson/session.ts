@@ -1,6 +1,8 @@
 import { and, eq, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { lexemes, patterns, reviewLog, sentences, themes } from "@/lib/db/schema";
+import { confusedWith, summariseConfusions } from "./confusions";
+import { loadConfusions } from "./history";
 import { DEFAULT_MAX_NEW, DEFAULT_MAX_REVIEW, dueTargets, planSession, type PlanOptions } from "./plan";
 import {
   allIn,
@@ -52,12 +54,16 @@ const inTheme = (themeId: string) => {
  */
 export async function loadSession(
   userId: string,
-  opts: Omit<PlanOptions, "seen" | "distractors" | "alternates"> & Scope,
+  opts: Omit<PlanOptions, "seen" | "distractors" | "alternates" | "confusions"> & Scope,
 ): Promise<SessionPlan> {
   const { themeId, now, maxNew = DEFAULT_MAX_NEW, maxReview = DEFAULT_MAX_REVIEW } = opts;
   const scope = and(visibleSentence(userId), themeId ? inTheme(themeId) : undefined)!;
 
-  const [known, patternRows] = await Promise.all([loadKnowledge(userId), db.select().from(patterns)]);
+  const [known, patternRows, confusionRows] = await Promise.all([
+    loadKnowledge(userId),
+    db.select().from(patterns),
+    loadConfusions(userId, now),
+  ]);
 
   const due = dueTargets(known, now, maxReview, opts.review).map(([key]) => key);
   const dueIds = (kind: "lexeme" | "pattern") =>
@@ -114,6 +120,8 @@ export async function loadSession(
   const chosenIds = chosen.map((s) => s.id);
   const usedLexemes = [...new Set(chosen.flatMap((s) => s.lexemeIds))];
   const meanings = [...new Set(chosen.map((s) => s.english))];
+  // Words these have been mixed up with, to offer as wrong answers again.
+  const mixedUp = [...new Set(confusionRows.flatMap((row) => [row.targetId, row.pickedId]))];
   const sample = (ids: ReturnType<typeof knownIds>, limit: number) =>
     sql`${lexemes.id} in (select id from ${ids} as candidates(id) order by random() limit ${limit})`;
 
@@ -128,6 +136,7 @@ export async function loadSession(
               visibleLexeme(userId),
               or(
                 inArray(lexemes.id, usedLexemes),
+                mixedUp.length > 0 ? inArray(lexemes.id, mixedUp) : undefined,
                 // The words of other ways to say the same things, so those are accepted in full.
                 inArray(lexemes.id, wordsOf(sameMeaning(userId, meanings))),
                 // Other forms of the same verbs, for "pick the missing word".
@@ -145,10 +154,11 @@ export async function loadSession(
     chosen.length === 0 ? [] : db.select().from(sentences).where(and(sameMeaning(userId, meanings), notInArray(sentences.id, chosenIds))),
   ]);
 
+  const lexemeMap = new Map(lexemeRows.map((l) => [l.id, l]));
   return planSession(
     {
       sentences: chosen,
-      lexemes: new Map(lexemeRows.map((l) => [l.id, l])),
+      lexemes: lexemeMap,
       patterns: new Map(patternRows.map((p) => [p.id, p])),
     },
     known,
@@ -159,6 +169,7 @@ export async function loadSession(
       seen: new Map(poolRows.map((row) => [row.sentence.id, row.seen])),
       distractors,
       alternates,
+      confusions: confusedWith(summariseConfusions(confusionRows, lexemeMap, known)),
     },
   );
 }
