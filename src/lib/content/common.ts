@@ -72,6 +72,11 @@ export const W = {
   },
   chande: { id: "chande", fa: "چنده", voc: "چَندِه", translit: "chande", gloss: "how much is it?", literary: "چند است" },
 
+  // --- Places ---
+  khune: { id: "khune", fa: "خونه", voc: "خونِه", translit: "khune", gloss: "home / house", literary: "خانه" },
+  koja: { id: "koja", fa: "کجا", voc: "کُجا", translit: "kojâ", gloss: "where" },
+  inja: { id: "inja", fa: "اینجا", voc: "اینجا", translit: "injâ", gloss: "here" },
+
   // --- Things ---
   nun: { id: "nun", fa: "نون", voc: "نون", translit: "nun", gloss: "bread", literary: "نان" },
 } satisfies Record<string, LexemeSeed>;
@@ -113,6 +118,7 @@ export const P = {
   // rather than teaching them again.
   "possessive-my": spine("possessive-my"),
   "possessive-your": spine("possessive-your"),
+  "possessive-his": spine("possessive-his"),
 } satisfies Record<string, PatternSeed>;
 
 function spine(id: string): PatternSeed {
