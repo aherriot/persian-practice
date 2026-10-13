@@ -1,3 +1,4 @@
+import { GRAMMAR_SPINE } from "@/lib/lesson/forms";
 import type { LexemeSeed, PatternSeed } from "./types";
 
 /**
@@ -36,6 +37,22 @@ export const W = {
   // --- Courtesies ---
   salam: { id: "salam", fa: "سلام", voc: "سَلام", translit: "salâm", gloss: "hello" },
   mamnun: { id: "mamnun", fa: "ممنون", voc: "مَمنون", translit: "mamnun", gloss: "thanks" },
+  bebakhshid: { id: "bebakhshid", fa: "ببخشید", voc: "بِبَخشید", translit: "bebakhshid", gloss: "excuse me / sorry" },
+  agha: {
+    id: "agha",
+    fa: "آقا",
+    voc: "آقا",
+    translit: "âghâ",
+    gloss: "sir",
+    note: "How you address a man you do not know: a shopkeeper, a driver, a stranger in the street.",
+  },
+
+  // --- Names ---
+  // Both end in a consonant, so every ending in the course attaches to them the regular way.
+  esm: { id: "esm", fa: "اسم", voc: "اِسم", translit: "esm", gloss: "name" },
+  maryam: { id: "maryam", fa: "مریم", voc: "مَریَم", translit: "maryam", gloss: "Maryam (a woman's name)" },
+  amir: { id: "amir", fa: "امیر", voc: "اَمیر", translit: "amir", gloss: "Amir (a man's name)" },
+  chiye: { id: "chiye", fa: "چیه", voc: "چیِه", translit: "chiye", gloss: "what is it?", literary: "چیست" },
 
   // --- Verbs ---
   daram: { id: "daram", fa: "دارم", voc: "دارَم", translit: "dâram", gloss: "I have", lemma: "داشتن", verbPerson: "1sg" },
@@ -82,4 +99,16 @@ export const P = {
     summary:
       "To attach a describing word or an owner to a noun, add a short -e sound to the noun: سیبِ من (sib-e man, my apple), نونِ تازه (nun-e tâze, fresh bread). It is spoken but almost never written.",
   },
+  // The possessive endings are the grammar spine's own patterns (forms.ts),
+  // taught here by hand because names and family cannot do without them. Once
+  // a learner has met them on a curated ladder the expansion author uses them
+  // rather than teaching them again.
+  "possessive-my": spine("possessive-my"),
+  "possessive-your": spine("possessive-your"),
 } satisfies Record<string, PatternSeed>;
+
+function spine(id: string): PatternSeed {
+  const entry = GRAMMAR_SPINE.find((p) => p.id === id);
+  if (!entry) throw new Error(`grammar spine has no pattern "${id}"`);
+  return { id: entry.id, title: entry.title, summary: entry.summary };
+}
