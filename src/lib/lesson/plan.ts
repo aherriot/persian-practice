@@ -21,6 +21,12 @@ export type PlanOptions = {
   seed: number;
   maxNew?: number;
   maxReview?: number;
+  /**
+   * Target keys to review in place of whatever is due, in this order: a
+   * session about chosen things (the weak-words session) rather than the
+   * schedule's. Ones the learner has not met are ignored.
+   */
+  review?: string[];
   minExercises?: number;
   /** How many times the learner has answered each sentence. Reviews prefer the least seen. */
   seen?: Map<string, number>;
@@ -35,8 +41,16 @@ export type Distractor = { english: string; length: number };
 export const DEFAULT_MAX_NEW = 3;
 export const DEFAULT_MAX_REVIEW = 8;
 
-/** What is due for review, most overdue first. */
-export function dueTargets(knowledge: Map<string, KnowledgeState>, now: Date, max: number): [string, KnowledgeState][] {
+/** What a session reviews: what is due, most overdue first, or the things it was asked for. */
+export function dueTargets(
+  knowledge: Map<string, KnowledgeState>,
+  now: Date,
+  max: number,
+  review?: string[],
+): [string, KnowledgeState][] {
+  if (review) {
+    return review.flatMap((key): [string, KnowledgeState][] => (knowledge.has(key) ? [[key, knowledge.get(key)!]] : [])).slice(0, max);
+  }
   return [...knowledge.entries()]
     .filter(([, state]) => state.dueAt <= now)
     .sort((a, b) => a[1].dueAt.getTime() - b[1].dueAt.getTime())
@@ -198,7 +212,7 @@ export function planSession(
 
   // --- Reviews: decided before anything new is marked known, so a review
   // never leans on a word introduced later in the same session. ---
-  const due = dueTargets(knowledge, now, maxReview);
+  const due = dueTargets(knowledge, now, maxReview, opts.review);
 
   const reviews: Exercise[] = [];
   for (const [key, state] of due) {

@@ -9,6 +9,7 @@ import { loadActivityHours } from "@/lib/lesson/history";
 import { summariseJourney, type JourneyItem, type Stage } from "@/lib/lesson/journey";
 import { isReadyForMore, measureProgress } from "@/lib/lesson/progress";
 import { loadCourse, loadKnowledge } from "@/lib/lesson/store";
+import type { Weakness } from "@/lib/lesson/weak";
 import { Activity } from "./Activity";
 
 const LIST = 8;
@@ -26,6 +27,12 @@ const EXERCISES: Record<string, string> = {
   word: "Meaning of one word",
   cloze: "Filling in the missing word",
   tiles: "Building the sentence",
+};
+
+const WEAKNESS: Record<Weakness, ReactNode> = {
+  missed: <span className="text-terracotta">wrong the last time</span>,
+  recovering: "right since, not yet three times running",
+  hard: "established again, but still a hard one",
 };
 
 const cardClass = "rounded-lg border border-ink/15 bg-sand px-5 py-4 shadow-[inset_0_4px_8px_-6px_rgba(42,29,22,0.35)]";
@@ -146,25 +153,19 @@ export default async function ProgressPage() {
             <ul>
               {journey.struggling.slice(0, LIST).map((item) => (
                 <Item key={item.key} item={item}>
-                  Missed {times(item.lapses)} ·{" "}
-                  {item.stage === "shaky" ? (
-                    <span className="text-terracotta">wrong the last time</span>
-                  ) : (
-                    "right since, not yet established"
-                  )}
+                  Missed {times(item.lapses)} · {WEAKNESS[item.weakness]}
                 </Item>
               ))}
             </ul>
             {journey.struggling.length > LIST && (
               <p className="mt-2 text-xs text-ink/55">And {journey.struggling.length - LIST} more.</p>
             )}
-            <p className="mt-3 text-xs text-ink/55">
-              These come back sooner in{" "}
-              <Link href="/practice" className="underline">
-                practice
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <p className="text-xs text-ink/55">A wrong answer counts against the word that exercise was testing.</p>
+              <Link href="/practice/weak" className="shrink-0 text-sm font-medium text-cobalt underline">
+                Practise these
               </Link>
-              . A wrong answer counts against the word that exercise was testing.
-            </p>
+            </div>
           </>
         )}
       </Section>
