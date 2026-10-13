@@ -224,11 +224,12 @@ test("a worker out of time hands its job back, saved, for the next one", async (
   await queue.enqueue(ME, "session", "session:me");
   const handler = {
     async step(job: { state: unknown }) {
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      await new Promise((resolve) => setTimeout(resolve, 600));
       return { n: ((job.state as { n: number } | null)?.n ?? 0) + 1 };
     },
   };
-  const result = await queue.runJobs({ session: handler, word: handler }, { budgetMs: 10 });
+  // Long enough to claim the job on a slow machine; the one step then outlasts it.
+  const result = await queue.runJobs({ session: handler, word: handler }, { budgetMs: 500 });
   assert.deepEqual(result, { steps: 1, more: true });
   const row = await stored("session:me");
   assert.equal(row.leaseId, null);
