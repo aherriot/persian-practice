@@ -1,18 +1,16 @@
-import { and, eq, gt, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { reviewLog } from "@/lib/db/schema";
-import type { ActivityHour } from "@/lib/lesson/activity";
 import { FRONTIER, MAX_SHAKY } from "@/lib/lesson/expand";
+import { loadActivityHours } from "@/lib/lesson/history";
 import { summariseJourney, type JourneyItem, type Stage } from "@/lib/lesson/journey";
 import { isReadyForMore, measureProgress } from "@/lib/lesson/progress";
 import { loadCourse, loadKnowledge } from "@/lib/lesson/store";
 import { Activity } from "./Activity";
 
-/** The streak is counted from this much history, so it tops out here. */
-const HISTORY_DAYS = 60;
 const LIST = 8;
 
 const STAGES: { stage: Stage; label: string; colour: string; meaning: string }[] = [
@@ -79,16 +77,10 @@ function Item({ item, children }: { item: JourneyItem; children: ReactNode }) {
 export default async function ProgressPage() {
   const user = await requireUser();
   const now = new Date();
-  const since = new Date(now.getTime() - HISTORY_DAYS * 24 * 60 * 60 * 1000);
-  const hour = sql<string>`date_trunc('hour', ${reviewLog.createdAt})`;
-  const [content, knowledge, hourRows, exerciseRows] = await Promise.all([
+  const [content, knowledge, hours, exerciseRows] = await Promise.all([
     loadCourse(user.id),
     loadKnowledge(user.id),
-    db
-      .select({ at: sql<number>`(extract(epoch from ${hour}) * 1000)::float8`, total: sql<number>`count(*)::int`, correct: sql<number>`count(*) filter (where ${reviewLog.correct})::int` })
-      .from(reviewLog)
-      .where(and(eq(reviewLog.userId, user.id), gt(reviewLog.createdAt, since)))
-      .groupBy(hour),
+    loadActivityHours(user.id, now),
     db
       .select({ exercise: reviewLog.exercise, total: sql<number>`count(*)::int`, correct: sql<number>`count(*) filter (where ${reviewLog.correct})::int` })
       .from(reviewLog)
@@ -98,7 +90,6 @@ export default async function ProgressPage() {
 
   const journey = summariseJourney(content, knowledge, now);
   const progress = measureProgress(content.onLadder, knowledge);
-  const hours: ActivityHour[] = hourRows.map((row) => ({ at: Number(row.at), total: row.total, correct: row.correct }));
   const exercises = exerciseRows.filter((row) => row.total > 0).sort((a, b) => a.correct / a.total - b.correct / b.total);
   const answered = exercises.reduce((sum, row) => sum + row.total, 0);
   const met = journey.items.length;

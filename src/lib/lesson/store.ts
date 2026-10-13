@@ -271,14 +271,19 @@ export type ThemeSummary = {
   due: number;
 };
 
-export async function themeSummaries(userId: string, now = new Date()): Promise<ThemeSummary[]> {
+/** `knowledge` spares the query when the caller has already loaded it. */
+export async function themeSummaries(
+  userId: string,
+  now = new Date(),
+  knowledge?: Map<string, KnowledgeState>,
+): Promise<ThemeSummary[]> {
   const [themeRows, sentenceRows, known] = await Promise.all([
     db.select().from(themes).where(visibleTheme(userId)).orderBy(asc(themes.position)),
     db
       .select({ themeId: sentences.themeId, lexemeIds: sentences.lexemeIds, patternIds: sentences.patternIds })
       .from(sentences)
       .where(and(visibleSentence(userId), eq(sentences.ladder, true))),
-    loadKnowledge(userId),
+    knowledge ?? loadKnowledge(userId),
   ]);
   return themeRows.map((theme) => {
     const components = new Set(
