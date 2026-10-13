@@ -6,6 +6,7 @@ import { closeTestDb, createTestDb, emptyTestDb, type TestDb } from "../db/test-
 import { knowledge, lexemes, sentences, users } from "../db/schema.ts";
 import type { SentenceDraft } from "./assemble.ts";
 import type { AuthorRequest } from "./author.ts";
+import { SKILLS } from "./types.ts";
 
 let db: TestDb;
 let generate: typeof import("./generate.ts");
@@ -23,7 +24,9 @@ beforeEach(async () => {
   await db.insert(users).values([ME, OTHER].map((id) => ({ id, email: `${id}@example.com` })));
   await db.insert(lexemes).values(WORDS.map((id) => ({ id, fa: `fa-${id}`, voc: `voc-${id}`, translit: id, gloss: `gloss ${id}` })));
   await db.insert(knowledge).values(
-    [ME, OTHER].flatMap((userId) => WORDS.map((refId) => ({ userId, kind: "lexeme" as const, refId, repetitions: 1, dueAt: new Date() }))),
+    [ME, OTHER].flatMap((userId) =>
+      WORDS.flatMap((refId) => SKILLS.map((skill) => ({ userId, kind: "lexeme" as const, refId, skill, repetitions: 1, dueAt: new Date() }))),
+    ),
   );
 });
 after(() => closeTestDb(db));

@@ -65,7 +65,7 @@ export async function loadSession(
     loadConfusions(userId, now),
   ]);
 
-  const due = dueTargets(known, now, maxReview, opts.review).map(([key]) => key);
+  const due = [...new Set(dueTargets(known, now, maxReview, opts.review).map((item) => item.key))];
   const dueIds = (kind: "lexeme" | "pattern") =>
     textArray(due.filter((key) => key.startsWith(`${kind}:`)).map((key) => key.slice(kind.length + 1)));
 

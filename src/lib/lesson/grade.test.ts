@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applyAnswer, introducedState } from "./grade.ts";
-import type { KnowledgeState, Target } from "./types.ts";
+import { evenly, type KnowledgeState, type Target } from "./types.ts";
 
 const NOW = new Date("2026-10-11T12:00:00Z");
 const HOUR = 60 * 60 * 1000;
@@ -11,7 +11,7 @@ const sib: Target = { kind: "lexeme", id: "sib" };
 const darim: Target = { kind: "lexeme", id: "darim" };
 const negation: Target = { kind: "pattern", id: "negation" };
 
-const known = (dueInDays: number, repetitions = 2): KnowledgeState => ({
+const known = (dueInDays: number, repetitions = 2): KnowledgeState => evenly({
   stability: 6,
   difficulty: 5,
   intervalDays: 6,

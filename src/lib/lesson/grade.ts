@@ -1,5 +1,5 @@
 import { NEW_ITEM_STATE, reviewItem, type Grade } from "@/lib/srs";
-import { targetKey, type KnowledgeState, type Target } from "./types";
+import { evenly, targetKey, type KnowledgeState, type SkillState, type Target } from "./types";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -10,12 +10,18 @@ const HOUR = 60 * 60 * 1000;
  */
 const DUE_SLACK_MS = 8 * HOUR;
 
-export function introducedState(now: Date): KnowledgeState {
+export function introducedSkill(now: Date): SkillState {
   return { ...NEW_ITEM_STATE, dueAt: now };
+}
+
+/** Something just met: new, and due, in every skill. */
+export function introducedState(now: Date): KnowledgeState {
+  return evenly(introducedSkill(now));
 }
 
 /**
  * New scheduling states after one graded exercise, keyed like the input map.
+ * `states` are for the one skill the exercise tested; no other skill moves.
  *
  * Right: everything in the sentence that was due advances; things not yet due
  * are left alone, so meeting a word again early does not inflate its interval.
@@ -23,14 +29,14 @@ export function introducedState(now: Date): KnowledgeState {
  * say which of its words was the problem.
  */
 export function applyAnswer(
-  states: Map<string, KnowledgeState>,
+  states: Map<string, SkillState>,
   primary: Target | null,
   others: Target[],
   correct: boolean,
   now: Date,
-): Map<string, KnowledgeState> {
-  const updates = new Map<string, KnowledgeState>();
-  const schedule = (key: string, state: KnowledgeState, grade: Grade) => {
+): Map<string, SkillState> {
+  const updates = new Map<string, SkillState>();
+  const schedule = (key: string, state: SkillState, grade: Grade) => {
     const next = reviewItem(state, grade, now);
     updates.set(key, { ...next, dueAt: new Date(next.dueAt.getTime() - DUE_SLACK_MS) });
   };

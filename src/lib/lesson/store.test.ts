@@ -7,14 +7,17 @@ import { and, eq } from "drizzle-orm";
 import { closeTestDb, createTestDb, emptyTestDb, type TestDb } from "../db/test-db.ts";
 import { knowledge, lexemes, reviewLog, sentences, users } from "../db/schema.ts";
 import type { Submission } from "./check.ts";
+import { SKILLS, type Skill } from "./types.ts";
 
 let db: TestDb;
 let recordAnswer: typeof import("./store.ts").recordAnswer;
+let introduce: typeof import("./store.ts").introduce;
+let loadKnowledge: typeof import("./store.ts").loadKnowledge;
 
 before(async () => {
   db = await createTestDb();
   // Only now: store.ts imports the database, which must already be the test one.
-  ({ recordAnswer } = await import("./store.ts"));
+  ({ recordAnswer, introduce, loadKnowledge } = await import("./store.ts"));
 });
 
 beforeEach(async () => {
@@ -45,21 +48,28 @@ const NOW = new Date("2026-10-11T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
 
 async function know(refId: string, { dueInDays }: { dueInDays: number }) {
-  await db.insert(knowledge).values({
-    userId: ME,
-    kind: "lexeme",
-    refId,
-    stability: 1,
-    difficulty: 5,
-    intervalDays: 1,
-    repetitions: 1,
-    dueAt: new Date(NOW.getTime() + dueInDays * DAY),
-    lastReviewedAt: new Date(NOW.getTime() - DAY),
-  });
+  await db.insert(knowledge).values(
+    SKILLS.map((skill) => ({
+      userId: ME,
+      kind: "lexeme" as const,
+      refId,
+      skill,
+      stability: 1,
+      difficulty: 5,
+      intervalDays: 1,
+      repetitions: 1,
+      dueAt: new Date(NOW.getTime() + dueInDays * DAY),
+      lastReviewedAt: new Date(NOW.getTime() - DAY),
+    })),
+  );
 }
 
-async function state(refId: string) {
-  const [row] = await db.select().from(knowledge).where(and(eq(knowledge.userId, ME), eq(knowledge.refId, refId)));
+/** Listening unless told otherwise: it is what the answers below test. */
+async function state(refId: string, skill: Skill = "listening") {
+  const [row] = await db
+    .select()
+    .from(knowledge)
+    .where(and(eq(knowledge.userId, ME), eq(knowledge.refId, refId), eq(knowledge.skill, skill)));
   return row;
 }
 
@@ -156,4 +166,38 @@ test("ungraded practice is logged, and a right answer still moves on what was du
   // Wrong, with nothing in particular being tested: nobody is set back.
   await recordAnswer(ME, { ...wrong, primary: null }, "k2", new Date(NOW.getTime() + 60_000));
   assert.equal((await state("apple")).lapses, 0);
+});
+
+test("an answer moves the one skill its exercise tests and leaves the others where they were", async () => {
+  const before = { reading: await state("apple", "reading"), producing: await state("apple", "producing") };
+  // Heard, and understood.
+  await recordAnswer(ME, right, "k1", NOW);
+  assert.equal((await state("apple", "listening")).repetitions, 2);
+  assert.deepEqual(await state("apple", "reading"), before.reading);
+  assert.deepEqual(await state("apple", "producing"), before.producing);
+
+  // Read, and not understood: reading is set back, and what was heard stands.
+  await recordAnswer(ME, { ...wrong, exercise: "read" }, "k2", new Date(NOW.getTime() + 60_000));
+  assert.equal((await state("apple", "reading")).lapses, 1);
+  assert.equal((await state("apple", "listening")).repetitions, 2);
+  assert.deepEqual(await state("apple", "producing"), before.producing);
+
+  // Asked for the word, and found it.
+  const pick: Submission = { sentenceId: FRUIT, exercise: "pick-word", primary: { kind: "lexeme", id: "apple" }, answer: "fa-apple" };
+  assert.deepEqual(await recordAnswer(ME, pick, "k3", new Date(NOW.getTime() + 120_000)), { ok: true, correct: true, duplicate: false });
+  assert.equal((await state("apple", "producing")).repetitions, 2);
+});
+
+test("something introduced is met in every skill, and as a whole stands where its weakest skill does", async () => {
+  await db.insert(lexemes).values({ id: "kiwi", fa: "fa-kiwi", voc: "voc-kiwi", translit: "kiwi", gloss: "gloss kiwi" });
+  await introduce(ME, { kind: "lexeme", id: "kiwi" }, NOW);
+  await introduce(ME, { kind: "lexeme", id: "kiwi" }, NOW);
+  for (const skill of SKILLS) assert.equal((await state("kiwi", skill)).repetitions, 0);
+
+  await recordAnswer(ME, right, "k1", NOW);
+  const apple = (await loadKnowledge(ME)).get("lexeme:apple")!;
+  assert.equal(apple.skills.listening.repetitions, 2);
+  assert.equal(apple.repetitions, 1);
+  // Still due, because reading and producing are.
+  assert.ok(apple.dueAt <= NOW);
 });

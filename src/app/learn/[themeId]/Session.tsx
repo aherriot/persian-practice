@@ -6,7 +6,7 @@ import { Button } from "@/components/Button";
 import { OrsiWindow } from "@/components/OrsiWindow";
 import { playAudio, preloadAudio, unlockAudio } from "@/lib/audio-client";
 import { lessonOutbox, type OutboxStatus } from "@/lib/lesson/outbox";
-import type { ChoiceExercise, Exercise, SessionPlan, TilesExercise } from "@/lib/lesson/types";
+import { exerciseName, type ChoiceExercise, type Exercise, type SessionPlan, type TilesExercise } from "@/lib/lesson/types";
 import { normalizeForCompare } from "@/lib/normalize";
 import { SentenceView, SpeakButton, shown } from "./Persian";
 
@@ -24,7 +24,7 @@ function openingAudio(exercise: Exercise): string | null {
   if (exercise.type === "intro-lexeme") return exercise.lexeme.audioUrl;
   if (exercise.type === "intro-pattern") return exercise.sentence.audioUrl;
   if (exercise.type === "choice" && exercise.variant === "listen") return exercise.sentence.audioUrl;
-  if (exercise.type === "choice" && exercise.variant === "word") return exercise.wordAudioUrl ?? null;
+  if (exercise.type === "choice" && exercise.variant === "hear-word") return exercise.wordAudioUrl ?? null;
   return null;
 }
 
@@ -111,7 +111,7 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
         // `correct` is this page's own marking, for showing at once. The server marks the answer again and stores that.
         save({
           sentenceId: exercise.sentence.id,
-          exercise: exercise.type === "choice" ? exercise.variant : exercise.type,
+          exercise: exerciseName(exercise),
           primary: exercise.primary,
           answer,
         });
@@ -358,10 +358,15 @@ function Example({ exercise }: { exercise: Exercise }) {
 
 const CHOICE_PROMPT: Record<ChoiceExercise["variant"], string> = {
   listen: "What did you hear?",
+  "hear-word": "What does the word you hear mean?",
   read: "What does this mean?",
-  word: "What does this word mean?",
+  "read-word": "What does this word mean?",
+  "pick-word": "Which word means this?",
   cloze: "Which word is missing?",
 };
+
+/** Exercises answered by picking Persian rather than English. */
+const PERSIAN_OPTIONS: ReadonlySet<ChoiceExercise["variant"]> = new Set(["pick-word", "cloze"]);
 
 function Choice({
   exercise,
@@ -374,7 +379,7 @@ function Choice({
 }) {
   const [picked, setPicked] = useState<number | null>(null);
   const done = answered !== null;
-  const persianOptions = exercise.variant === "cloze";
+  const persianOptions = PERSIAN_OPTIONS.has(exercise.variant);
 
   const pick = useCallback(
     (i: number) => {
@@ -402,15 +407,17 @@ function Choice({
 
       <div className="flex min-h-28 flex-col items-center justify-center gap-3 text-center">
         {exercise.variant === "listen" && <SpeakButton url={exercise.sentence.audioUrl} label="Hear it again" large />}
-        {exercise.variant === "read" && <SentenceView sentence={exercise.sentence} revealMeaning={false} />}
-        {exercise.variant === "word" && token && (
-          <div className="flex items-center gap-4">
-            <p dir="rtl" lang="fa" title={token.translit} className="text-5xl leading-[1.9] text-ink">
-              {shown(token)}
-            </p>
-            {exercise.wordAudioUrl && <SpeakButton url={exercise.wordAudioUrl} label="Hear the word" />}
-          </div>
+        {exercise.variant === "hear-word" && exercise.wordAudioUrl && (
+          <SpeakButton url={exercise.wordAudioUrl} label="Hear it again" large />
         )}
+        {/* Reading is tested with nothing to lean on: no sound, and no pronunciation behind a tap. */}
+        {exercise.variant === "read" && <SentenceView sentence={exercise.sentence} revealMeaning={false} hints={false} />}
+        {exercise.variant === "read-word" && token && (
+          <p dir="rtl" lang="fa" className="text-5xl leading-[1.9] text-ink">
+            {shown(token)}
+          </p>
+        )}
+        {exercise.variant === "pick-word" && token && <p className="text-2xl font-semibold text-ink">{token.gloss}</p>}
         {exercise.variant === "cloze" && (
           <>
             <p className="text-base font-medium text-ink">{exercise.sentence.english}</p>

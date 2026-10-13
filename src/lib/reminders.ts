@@ -116,7 +116,8 @@ export type ReminderRun = { sent: number; notNeeded: number; failed: number };
 export async function sendReminders(opts: { now: Date; baseUrl: string; secret: string; send: Send }): Promise<ReminderRun> {
   const { now, baseUrl, secret, send } = opts;
   const due = db
-    .select({ userId: knowledge.userId, n: sql<number>`count(*)::int`.as("n") })
+    // A word due in more than one skill is still one thing due.
+    .select({ userId: knowledge.userId, n: sql<number>`count(distinct (${knowledge.kind}, ${knowledge.refId}))::int`.as("n") })
     .from(knowledge)
     .where(lte(knowledge.dueAt, now))
     .groupBy(knowledge.userId)

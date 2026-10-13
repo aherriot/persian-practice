@@ -134,6 +134,13 @@
       "when": 1791851222829,
       "tag": "0018_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1791853675345,
+      "tag": "0019_skills",
+      "breakpoints": true
     }
   ]
 }

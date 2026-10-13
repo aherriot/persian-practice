@@ -32,10 +32,16 @@ export async function loadActivityHours(userId: string, now: Date, days = HISTOR
 export const CONFUSION_DAYS = 90;
 const CONFUSION_ROWS = 200;
 
+// Exercises about one word, by what the options are: meanings, or Persian
+// words. "word" is what the meaning ones were logged as before reading and
+// listening were told apart.
+const BY_MEANING = ["word", "read-word", "hear-word"];
+const BY_SPELLING = ["cloze", "pick-word"];
+
 /**
- * The wrong answers a learner has picked in the two exercises that are about
+ * The wrong answers a learner has picked in the exercises that are about
  * one word, matched back to the word each wrong answer belongs to: by meaning
- * for "what does this word mean", by spelling for "which word is missing".
+ * where the options are meanings, by spelling where they are Persian words.
  * Counted per pair, the most frequent first. Answers from before picks were
  * recorded have none and are not counted.
  */
@@ -50,8 +56,8 @@ export async function loadConfusions(userId: string, now: Date, days = CONFUSION
     .innerJoin(
       lexemes,
       or(
-        and(eq(reviewLog.exercise, "word"), eq(lexemes.gloss, reviewLog.picked)),
-        and(eq(reviewLog.exercise, "cloze"), eq(lexemes.fa, reviewLog.picked)),
+        and(inArray(reviewLog.exercise, BY_MEANING), eq(lexemes.gloss, reviewLog.picked)),
+        and(inArray(reviewLog.exercise, BY_SPELLING), eq(lexemes.fa, reviewLog.picked)),
       ),
     )
     .where(
@@ -60,7 +66,7 @@ export async function loadConfusions(userId: string, now: Date, days = CONFUSION
         eq(reviewLog.correct, false),
         isNotNull(reviewLog.picked),
         like(reviewLog.target, "lexeme:%"),
-        inArray(reviewLog.exercise, ["word", "cloze"]),
+        inArray(reviewLog.exercise, [...BY_MEANING, ...BY_SPELLING]),
         gt(reviewLog.createdAt, new Date(now.getTime() - days * DAY_MS)),
         or(isNull(lexemes.ownerId), eq(lexemes.ownerId, userId)),
         ne(lexemes.id, targetId),

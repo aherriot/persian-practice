@@ -4,12 +4,12 @@ import { buildTheme } from "../content/build.ts";
 import { SHOPPING } from "../content/shopping.ts";
 import { dailyActivity } from "./activity.ts";
 import { stageOf, summariseJourney } from "./journey.ts";
-import type { KnowledgeState } from "./types.ts";
+import { evenly, type KnowledgeState } from "./types.ts";
 
 const content = buildTheme(SHOPPING);
 const now = new Date(2026, 9, 12, 15);
 const DAY = 24 * 60 * 60 * 1000;
-const state = (repetitions: number, lapses = 0, dueInDays = 0, intervalDays = 1): KnowledgeState => ({
+const state = (repetitions: number, lapses = 0, dueInDays = 0, intervalDays = 1): KnowledgeState => evenly({
   intervalDays,
   stability: 1,
   difficulty: 5,

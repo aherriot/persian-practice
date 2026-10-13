@@ -4,7 +4,7 @@ import { buildTheme } from "../content/build.ts";
 import { SHOPPING } from "../content/shopping.ts";
 import { confusedWith, summariseConfusions, type ConfusionRow } from "./confusions.ts";
 import { componentsOf, planSession } from "./plan.ts";
-import { targetKey, type KnowledgeState, type Lexeme } from "./types.ts";
+import { evenly, targetKey, type KnowledgeState, type Lexeme } from "./types.ts";
 
 const content = buildTheme(SHOPPING);
 const NOW = new Date("2026-10-11T12:00:00Z");
@@ -32,7 +32,7 @@ const row = (targetId: string, pickedId: string, times: number, exercise = "word
   exercise,
   times,
 });
-const state = (repetitions: number, dueInDays: number): KnowledgeState => ({
+const state = (repetitions: number, dueInDays: number): KnowledgeState => evenly({
   intervalDays: 1,
   stability: 1,
   difficulty: 5,
@@ -85,10 +85,10 @@ test("a word the learner has mixed up with another is offered as a wrong answer 
   for (let seed = 1; seed <= 20; seed++) {
     const plan = planSession(content, knowledge, { now: NOW, seed, maxNew: 0, maxReview: 20, confusions });
     for (const e of plan.exercises) {
-      if (e.type !== "choice" || (e.variant !== "word" && e.variant !== "cloze") || !e.primary) continue;
+      if (e.type !== "choice" || (e.variant !== "read-word" && e.variant !== "cloze") || !e.primary) continue;
       const target = content.lexemes.get(e.primary.id)!;
       const partner = content.lexemes.get(confusions.get(target.id)![0])!;
-      const [right, wrong] = e.variant === "word" ? [target.gloss, partner.gloss] : [e.sentence.tokens[e.tokenIndex!].fa, partner.fa];
+      const [right, wrong] = e.variant === "read-word" ? [target.gloss, partner.gloss] : [e.sentence.tokens[e.tokenIndex!].fa, partner.fa];
       // Unless it would be a second right answer.
       if (right === wrong) continue;
       assert.ok(e.options.includes(wrong), `${e.variant} for ${target.id} offers ${partner.id}`);

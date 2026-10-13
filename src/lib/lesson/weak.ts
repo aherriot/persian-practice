@@ -1,5 +1,5 @@
 import { VOWEL_FADE_REPS } from "./plan";
-import type { KnowledgeState } from "./types";
+import { SKILLS, type KnowledgeState, type SkillState } from "./types";
 
 /**
  * What counts as a weak word or grammar point. This is the one definition:
@@ -19,6 +19,9 @@ import type { KnowledgeState } from "./types";
  * Nothing that has never been missed is weak, however new, and a hard word
  * stops being weak once it has held up over a gap of three weeks.
  *
+ * Each skill is judged on its own and the thing is as weak as its weakest:
+ * a word read without trouble but missed by ear is a weak word.
+ *
  * It is read from the scheduling state alone, not from the answer log, so
  * it costs no query beyond the one that loads what the learner knows.
  */
@@ -31,7 +34,8 @@ export const SETTLED_INTERVAL_DAYS = 21;
 /** How many weak things one session takes on, the weakest first. */
 export const WEAK_SESSION = 10;
 
-export function weaknessOf(state: Pick<KnowledgeState, "repetitions" | "lapses" | "difficulty" | "intervalDays">): Weakness | null {
+/** One skill's weakness. */
+export function weaknessOf(state: Pick<SkillState, "repetitions" | "lapses" | "difficulty" | "intervalDays">): Weakness | null {
   if (state.lapses === 0) return null;
   if (state.repetitions === 0) return "missed";
   if (state.repetitions < VOWEL_FADE_REPS) return "recovering";
@@ -39,6 +43,12 @@ export function weaknessOf(state: Pick<KnowledgeState, "repetitions" | "lapses" 
 }
 
 const ORDER: Weakness[] = ["missed", "recovering", "hard"];
+
+/** The weakness of a word or grammar point: that of its weakest skill. */
+export function overallWeakness(state: KnowledgeState): Weakness | null {
+  const found = SKILLS.flatMap((skill) => weaknessOf(state.skills[skill]) ?? []);
+  return ORDER.find((weakness) => found.includes(weakness)) ?? null;
+}
 
 /** Sorts the weakest first: by kind of weakness, then the harder, then the more often missed. */
 export function byWeakness<T extends Pick<KnowledgeState, "lapses" | "difficulty"> & { weakness: Weakness }>(a: T, b: T): number {
@@ -49,7 +59,7 @@ export function byWeakness<T extends Pick<KnowledgeState, "lapses" | "difficulty
 export function weakTargets(knowledge: Map<string, KnowledgeState>): string[] {
   return [...knowledge]
     .flatMap(([key, state]) => {
-      const weakness = weaknessOf(state);
+      const weakness = overallWeakness(state);
       return weakness ? [{ key, weakness, lapses: state.lapses, difficulty: state.difficulty }] : [];
     })
     .sort((a, b) => byWeakness(a, b) || a.key.localeCompare(b.key))

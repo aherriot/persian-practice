@@ -1,14 +1,14 @@
 import { normalizeForCompare } from "@/lib/normalize";
 import { componentsOf } from "./plan";
-import { targetKey, type ChoiceExercise, type Sentence, type Target, type ThemeContent } from "./types";
+import { EXERCISE_SKILL, targetKey, type ExerciseName, type Sentence, type Target, type ThemeContent } from "./types";
 import { acceptedAnswers } from "./variants";
 
-export const EXERCISES = ["listen", "read", "word", "cloze", "tiles"] as const satisfies readonly (ChoiceExercise["variant"] | "tiles")[];
+export const EXERCISES = Object.keys(EXERCISE_SKILL) as [ExerciseName, ...ExerciseName[]];
 
 /** What a learner did in one exercise, as the browser reports it. */
 export type Submission = {
   sentenceId: string;
-  exercise: (typeof EXERCISES)[number];
+  exercise: ExerciseName;
   /** What the exercise was testing; null for ungraded extra practice. */
   primary: Target | null;
   /** The option picked, or for sentence-building the words in the order they were placed. */
@@ -56,7 +56,10 @@ export function checkAnswer(sentence: Sentence, content: ThemeContent, submissio
     const lexeme = content.lexemes.get(primary.id);
     const token = sentence.tokens.find((t) => t.lexemeId === primary.id);
     if (!lexeme || !token) return { ok: false, reason: "unknown word" };
-    correct = exercise === "word" ? answer === lexeme.gloss : normalizeForCompare(answer) === normalizeForCompare(token.fa);
+    const same = (persian: string) => normalizeForCompare(answer) === normalizeForCompare(persian);
+    if (exercise === "hear-word" || exercise === "read-word") correct = answer === lexeme.gloss;
+    else if (exercise === "pick-word") correct = same(lexeme.fa);
+    else correct = same(token.fa);
   }
 
   return {

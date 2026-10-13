@@ -6,6 +6,7 @@ import { after, before, beforeEach, test } from "node:test";
 import { closeTestDb, createTestDb, emptyTestDb, type TestDb } from "../db/test-db.ts";
 import { knowledge, lexemes, reviewLog, sentences, themes, users } from "../db/schema.ts";
 import type { SessionPlan } from "./types.ts";
+import { SKILLS } from "./types.ts";
 
 let db: TestDb;
 let loadSession: typeof import("./session.ts").loadSession;
@@ -64,16 +65,23 @@ async function addSentence(id: string, lexemeIds: string[], options: SentenceOpt
   });
 }
 
-/** Marks words as met: due yesterday unless `dueInDays` says otherwise. */
+/**
+ * Marks words as met: due yesterday unless `dueInDays` says otherwise. Due
+ * means due by ear; reading and producing are a month off, so each word comes
+ * up for review once.
+ */
 async function know(userId: string, lexemeIds: string[], { dueInDays = -1, repetitions = 1 } = {}) {
   await db.insert(knowledge).values(
-    lexemeIds.map((refId) => ({
-      userId,
-      kind: "lexeme" as const,
-      refId,
-      repetitions,
-      dueAt: new Date(NOW.getTime() + dueInDays * DAY),
-    })),
+    lexemeIds.flatMap((refId) =>
+      SKILLS.map((skill) => ({
+        userId,
+        kind: "lexeme" as const,
+        refId,
+        skill,
+        repetitions,
+        dueAt: new Date(NOW.getTime() + (skill === "listening" ? dueInDays : 30) * DAY),
+      })),
+    ),
   );
 }
 
@@ -379,7 +387,7 @@ test("a word the learner picked wrongly before is offered again as a wrong answe
   for (let seed = 1; seed <= 30; seed++) {
     const plan = await loadSession(ME, { now: NOW, seed, maxNew: 0, themeId: "fruit" });
     for (const e of plan.exercises) {
-      if (e.type !== "choice" || e.variant !== "word" || e.primary?.id !== "apple") continue;
+      if (e.type !== "choice" || e.variant !== "hear-word" || e.primary?.id !== "apple") continue;
       assert.ok(e.options.includes("gloss tea"), `seed ${seed}: ${e.options.join(", ")}`);
       asked++;
     }

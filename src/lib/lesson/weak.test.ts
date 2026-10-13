@@ -4,14 +4,14 @@ import { buildTheme } from "../content/build.ts";
 import { SHOPPING } from "../content/shopping.ts";
 import { applyAnswer } from "./grade.ts";
 import { componentsOf, planSession } from "./plan.ts";
-import { targetKey, type KnowledgeState } from "./types.ts";
+import { evenly, targetKey, type KnowledgeState, type SkillState } from "./types.ts";
 import { weakTargets, weaknessOf } from "./weak.ts";
 
 const content = buildTheme(SHOPPING);
 const NOW = new Date("2026-10-11T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
 
-const state = (over: Partial<KnowledgeState> = {}): KnowledgeState => ({
+const state = (over: Partial<SkillState> = {}): KnowledgeState => evenly({
   intervalDays: 1,
   stability: 1,
   difficulty: 5,

@@ -71,12 +71,15 @@ export function SentenceView({
   sentence,
   revealMeaning,
   blankIndex,
+  hints = true,
   className = "text-3xl",
 }: {
   sentence: DisplaySentence;
   /** Whether tapping a word also shows what it means — off while the meaning is the question. */
   revealMeaning: boolean;
   blankIndex?: number;
+  /** Whether a word gives up its pronunciation when tapped — off while reading it unaided is the question. */
+  hints?: boolean;
   className?: string;
 }) {
   return (
@@ -87,8 +90,10 @@ export function SentenceView({
             <span className="mx-1 inline-block w-20 border-b-2 border-ink/50 align-baseline" aria-label="blank">
               &nbsp;
             </span>
-          ) : (
+          ) : hints ? (
             <Word token={token} revealMeaning={revealMeaning} />
+          ) : (
+            shown(token)
           )}
           {token.after}
           {i < sentence.tokens.length - 1 ? " " : sentence.endPunct}

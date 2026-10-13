@@ -4,14 +4,14 @@ import { buildTheme } from "../content/build.ts";
 import { SHOPPING } from "../content/shopping.ts";
 import { checkAnswer, type Submission } from "./check.ts";
 import { componentsOf, planSession } from "./plan.ts";
-import { targetKey, type ChoiceExercise, type KnowledgeState, type TilesExercise } from "./types.ts";
+import { evenly, targetKey, type ChoiceExercise, type KnowledgeState, type TilesExercise } from "./types.ts";
 
 const content = buildTheme(SHOPPING);
 const NOW = new Date("2026-10-11T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
 
 function knowing(n: number, repetitions: number): Map<string, KnowledgeState> {
-  const state: KnowledgeState = {
+  const state: KnowledgeState = evenly({
     stability: 1,
     difficulty: 5,
     intervalDays: 1,
@@ -19,7 +19,7 @@ function knowing(n: number, repetitions: number): Map<string, KnowledgeState> {
     lapses: 0,
     dueAt: new Date(NOW.getTime() - DAY),
     lastReviewedAt: null,
-  };
+  });
   const map = new Map<string, KnowledgeState>();
   for (const s of content.sentences.slice(0, n)) for (const c of componentsOf(s)) map.set(targetKey(c), state);
   return map;
@@ -65,7 +65,7 @@ test("the server marks every planned exercise the way the browser does", () => {
       assert.equal(wrong.picked, [...model, model[0]].join(" "));
     }
   }
-  assert.deepEqual([...seen].sort(), ["cloze", "listen", "read", "tiles", "word"]);
+  assert.deepEqual([...seen].sort(), ["cloze", "hear-word", "listen", "pick-word", "read", "read-word", "tiles"]);
 });
 
 test("the server works out for itself what else a sentence exercises", () => {
@@ -100,7 +100,7 @@ test("an answer of the wrong shape, or a word exercise about no word, is refused
   const primary = { kind: "lexeme", id: s.lexemeIds[0] } as const;
   assert.equal(checkAnswer(s, content, { sentenceId: s.id, exercise: "tiles", primary, answer: s.english }).ok, false);
   assert.equal(checkAnswer(s, content, { sentenceId: s.id, exercise: "read", primary, answer: [s.english] }).ok, false);
-  assert.equal(checkAnswer(s, content, { sentenceId: s.id, exercise: "word", primary: null, answer: "carrot" }).ok, false);
+  assert.equal(checkAnswer(s, content, { sentenceId: s.id, exercise: "read-word", primary: null, answer: "carrot" }).ok, false);
   assert.equal(checkAnswer(s, content, { sentenceId: s.id, exercise: "cloze", primary: null, answer: "x" }).ok, false);
 });
 

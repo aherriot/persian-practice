@@ -1,9 +1,9 @@
 import { VOWEL_FADE_REPS } from "./plan";
-import type { KnowledgeState, ThemeContent } from "./types";
-import { byWeakness, weaknessOf, type Weakness } from "./weak";
+import { SKILLS, type KnowledgeState, type Skill, type SkillState, type ThemeContent } from "./types";
+import { byWeakness, overallWeakness, type Weakness } from "./weak";
 
 /**
- * Where one word or grammar point stands for a learner.
+ * Where one skill of a word or grammar point stands for a learner.
  *   new          met, but not answered right yet
  *   shaky        answered wrong the last time it came up
  *   learning     answered right once or twice running
@@ -11,10 +11,18 @@ import { byWeakness, weaknessOf, type Weakness } from "./weak";
  */
 export type Stage = "new" | "shaky" | "learning" | "established";
 
-export function stageOf(state: Pick<KnowledgeState, "repetitions" | "lapses">): Stage {
+export function stageOf(state: Pick<SkillState, "repetitions" | "lapses">): Stage {
   if (state.repetitions >= VOWEL_FADE_REPS) return "established";
   if (state.repetitions >= 1) return "learning";
   return state.lapses > 0 ? "shaky" : "new";
+}
+
+const LEAST_ADVANCED: Stage[] = ["shaky", "new", "learning", "established"];
+
+/** Where the thing as a whole stands: no further on than the skill that is furthest behind. */
+export function overallStage(state: KnowledgeState): Stage {
+  const stages = SKILLS.map((skill) => stageOf(state.skills[skill]));
+  return LEAST_ADVANCED.find((stage) => stages.includes(stage))!;
 }
 
 export type JourneyItem = {
@@ -27,6 +35,8 @@ export type JourneyItem = {
   /** What a word means; null for a grammar point. */
   gloss: string | null;
   stage: Stage;
+  /** The same for each skill on its own. */
+  skills: Record<Skill, Stage>;
   /** Why it counts as weak, if it does (see weak.ts). */
   weakness: Weakness | null;
   /** How many times it has been answered wrong. */
@@ -41,6 +51,8 @@ export type Journey = {
   words: number;
   patterns: number;
   stages: Record<Stage, number>;
+  /** The same count for each skill on its own. */
+  skillStages: Record<Skill, Record<Stage, number>>;
   /** Everything weak (see weak.ts), the weakest first. */
   struggling: (JourneyItem & { weakness: Weakness })[];
   /** Established, longest gap between reviews first. */
@@ -66,8 +78,9 @@ export function summariseJourney(content: Pick<ThemeContent, "lexemes" | "patter
       fa: lexeme?.voc ?? null,
       label: lexeme?.translit ?? pattern!.title,
       gloss: lexeme?.gloss ?? null,
-      stage: stageOf(state),
-      weakness: weaknessOf(state),
+      stage: overallStage(state),
+      skills: Object.fromEntries(SKILLS.map((skill) => [skill, stageOf(state.skills[skill])])) as Record<Skill, Stage>,
+      weakness: overallWeakness(state),
       lapses: state.lapses,
       difficulty: state.difficulty,
       intervalDays: state.intervalDays,
@@ -76,7 +89,14 @@ export function summariseJourney(content: Pick<ThemeContent, "lexemes" | "patter
   }
 
   const stages: Record<Stage, number> = { new: 0, shaky: 0, learning: 0, established: 0 };
-  for (const item of items) stages[item.stage]++;
+  const skillStages = Object.fromEntries(SKILLS.map((skill) => [skill, { new: 0, shaky: 0, learning: 0, established: 0 }])) as Record<
+    Skill,
+    Record<Stage, number>
+  >;
+  for (const item of items) {
+    stages[item.stage]++;
+    for (const skill of SKILLS) skillStages[skill][item.skills[skill]]++;
+  }
   const dueWithin = (ms: number) => items.filter((item) => item.dueAt.getTime() <= now.getTime() + ms).length;
 
   return {
@@ -84,6 +104,7 @@ export function summariseJourney(content: Pick<ThemeContent, "lexemes" | "patter
     words: items.filter((item) => item.kind === "lexeme").length,
     patterns: items.filter((item) => item.kind === "pattern").length,
     stages,
+    skillStages,
     struggling: items.filter((item): item is JourneyItem & { weakness: Weakness } => item.weakness !== null).sort(byWeakness),
     strongest: items
       .filter((item) => item.stage === "established")

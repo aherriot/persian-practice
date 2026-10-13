@@ -10,7 +10,7 @@ import { CONFUSION_DAYS, loadActivityHours, loadConfusions } from "@/lib/lesson/
 import { summariseJourney, type JourneyItem, type Stage } from "@/lib/lesson/journey";
 import { isReadyForMore, measureProgress } from "@/lib/lesson/progress";
 import { loadCourse, loadKnowledge } from "@/lib/lesson/store";
-import type { Lexeme } from "@/lib/lesson/types";
+import { SKILLS, type Lexeme, type Skill } from "@/lib/lesson/types";
 import type { Weakness } from "@/lib/lesson/weak";
 import { Activity } from "./Activity";
 
@@ -26,10 +26,20 @@ const STAGES: { stage: Stage; label: string; colour: string; meaning: string }[]
 
 const EXERCISES: Record<string, string> = {
   listen: "Hearing a sentence",
+  "hear-word": "Hearing one word",
   read: "Reading a sentence",
-  word: "Meaning of one word",
+  "read-word": "Reading one word",
+  "pick-word": "Finding the word for a meaning",
   cloze: "Filling in the missing word",
   tiles: "Building the sentence",
+  // From before reading and listening were told apart: the word was shown and spoken.
+  word: "Meaning of one word",
+};
+
+const SKILL_LABELS: Record<Skill, { label: string; meaning: string }> = {
+  listening: { label: "Listening", meaning: "understood from sound alone" },
+  reading: { label: "Reading", meaning: "understood from the page alone" },
+  producing: { label: "Producing", meaning: "found or built from a meaning" },
 };
 
 const WEAKNESS: Record<Weakness, ReactNode> = {
@@ -158,8 +168,39 @@ export default async function ProgressPage() {
           ))}
         </ul>
         <p className="mt-3 text-xs text-ink/55">
-          Spaced reviews put the third correct answer about a week after the first, so “established” grows slowly on
-          purpose. Once a word is established its vowel marks are dropped.
+          A word stands where its weakest skill does. Spaced reviews put the third correct answer about a week after
+          the first, so “established” grows slowly on purpose.
+        </p>
+      </Section>
+
+      <Section title="By skill">
+        <ul className="flex flex-col gap-3">
+          {SKILLS.map((skill) => (
+            <li key={skill}>
+              <div className="flex items-baseline justify-between gap-3 text-sm">
+                <span>
+                  <span className="font-semibold text-ink">{SKILL_LABELS[skill].label}</span>{" "}
+                  <span className="text-xs text-ink/55">{SKILL_LABELS[skill].meaning}</span>
+                </span>
+                <span className="shrink-0 text-xs text-ink/60">
+                  {journey.skillStages[skill].established} of {met} established
+                </span>
+              </div>
+              <div
+                className="mt-1 flex h-2 overflow-hidden rounded-full bg-ink/10"
+                role="img"
+                aria-label={STAGES.map(({ stage, label }) => `${label}: ${journey.skillStages[skill][stage]}`).join(", ")}
+              >
+                {STAGES.map(({ stage, colour }) => (
+                  <div key={stage} className={colour} style={{ flexGrow: journey.skillStages[skill][stage] }} />
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-xs text-ink/55">
+          Hearing a word, reading it and coming up with it are practised and scheduled apart, since being good at one
+          says little about the others. A word loses its vowel marks once you have read it right three times running.
         </p>
       </Section>
 

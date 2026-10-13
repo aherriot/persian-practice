@@ -17,7 +17,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "next-auth/adapters";
-import type { Person } from "@/lib/lesson/types";
+import type { Person, Skill } from "@/lib/lesson/types";
 
 const id = () =>
   text("id")
@@ -180,7 +180,7 @@ export const sentences = pgTable(
   ],
 );
 
-// FSRS state (src/lib/srs.ts), one row per (user, lexeme or pattern). Sentences
+// FSRS state (src/lib/srs.ts), one row per (user, lexeme or pattern, skill). Sentences
 // are not scheduled; they are the vehicle that exercises these.
 export const knowledge = pgTable(
   "Knowledge",
@@ -191,6 +191,8 @@ export const knowledge = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     kind: text("kind").$type<"lexeme" | "pattern">().notNull(),
     refId: text("refId").notNull(),
+    // Listening, reading and producing are scheduled apart: one row for each.
+    skill: text("skill").$type<Skill>().notNull(),
     // Days for recall to fall to 90%, and how hard the item is (1–10). Both
     // zero until it has been answered once.
     stability: real("stability").notNull().default(0),
@@ -202,7 +204,7 @@ export const knowledge = pgTable(
     lastReviewedAt: timestamp("lastReviewedAt", { precision: 3 }),
     introducedAt: timestampDefaultNow("introducedAt"),
   },
-  (t) => [unique().on(t.userId, t.kind, t.refId), index().on(t.userId, t.dueAt)],
+  (t) => [unique().on(t.userId, t.kind, t.refId, t.skill), index().on(t.userId, t.dueAt)],
 );
 
 export const reviewLog = pgTable(
