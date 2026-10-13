@@ -45,7 +45,7 @@ function describePlan(plan: SessionPlan): string {
   const review = `practise ${count(plan.reviewCount, "thing")} you have met before`;
   if (plan.newCount > 0 && plan.reviewCount > 0) return `You will learn ${newThings(plan)} and ${review}.`;
   if (plan.newCount > 0) return `You will learn ${newThings(plan)}, one at a time, then practise using them.`;
-  if (plan.reviewCount > 0) return `You will ${review}.`;
+  if (plan.reviewCount > 0) return `You will ${review}.${plan.newHeldBack ? " New words wait until you have caught up." : ""}`;
   return "Nothing is due for review, so this is a short practice round with sentences you already know.";
 }
 

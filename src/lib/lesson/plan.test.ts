@@ -5,7 +5,7 @@ import { GREETINGS } from "../content/greetings.ts";
 import { SHOPPING } from "../content/shopping.ts";
 import { normalizeForCompare } from "../normalize.ts";
 import { applyAnswer, introducedState } from "./grade.ts";
-import { componentsOf, dueTargets, planSession, sentenceText } from "./plan.ts";
+import { componentsOf, dueTargets, planSession, roomForNew, sentenceText } from "./plan.ts";
 import { acceptedAnswers } from "./variants.ts";
 import { evenly, EXERCISE_SKILL, knowledgeOf, SKILLS, targetKey, type Exercise, type KnowledgeState } from "./types.ts";
 
@@ -386,4 +386,32 @@ test("nothing is offered as a reply that the learner could not yet read", () => 
       }
     }
   }
+});
+
+test("review comes first: the more there is due, the less that is new, and none once review fills the session", () => {
+  assert.equal(roomForNew(0, 3, 8), 3);
+  assert.equal(roomForNew(2, 3, 8), 3);
+  assert.equal(roomForNew(4, 3, 8), 2);
+  assert.equal(roomForNew(7, 3, 8), 1);
+  assert.equal(roomForNew(8, 3, 8), 0);
+  assert.equal(roomForNew(0, 0, 8), 0);
+
+  // A few things met and every skill of each due, in a course with more to teach.
+  const due = knowing(4, 1, -1).size * SKILLS.length;
+  const behind = planSession(content, knowing(4, 1, -1), { now: NOW, seed: 1, maxReview: due });
+  assert.equal(behind.reviewCount, due);
+  assert.equal(behind.newCount, 0);
+  assert.equal(behind.newHeldBack, true);
+  assert.ok(behind.exercises.every((exercise) => !exercise.type.startsWith("intro")));
+
+  // With half the session to spare, what is due is still asked before anything new is shown.
+  const some = planSession(content, knowing(4, 1, -1), { now: NOW, seed: 1, maxReview: due * 2 });
+  assert.equal(some.reviewCount, due);
+  assert.equal(some.newCount, 2);
+  assert.equal(some.exercises.findIndex((exercise) => exercise.type.startsWith("intro")), due);
+
+  // Nothing due: new material as before.
+  const caughtUp = planSession(content, knowing(4, 1, 5), { now: NOW, seed: 1 });
+  assert.equal(caughtUp.newCount, 3);
+  assert.equal(caughtUp.newHeldBack, false);
 });
