@@ -33,6 +33,8 @@ export const W = {
   in: { id: "in", fa: "این", voc: "این", translit: "in", gloss: "this" },
   kheyli: { id: "kheyli", fa: "خیلی", voc: "خِیلی", translit: "kheyli", gloss: "very" },
   ye: { id: "ye", fa: "یه", voc: "یِه", translit: "ye", gloss: "a / one", literary: "یک" },
+  ba: { id: "ba", fa: "با", voc: "با", translit: "bâ", gloss: "with" },
+  emruz: { id: "emruz", fa: "امروز", voc: "اِمروز", translit: "emruz", gloss: "today" },
 
   // --- Courtesies ---
   salam: { id: "salam", fa: "سلام", voc: "سَلام", translit: "salâm", gloss: "hello" },
@@ -98,6 +100,12 @@ export const P = {
     title: "Linking words (ezâfe)",
     summary:
       "To attach a describing word or an owner to a noun, add a short -e sound to the noun: سیبِ من (sib-e man, my apple), نونِ تازه (nun-e tâze, fresh bread). It is spoken but almost never written.",
+  },
+  "copula-vowel": {
+    id: "copula-vowel",
+    title: "\"Is\" after a vowel",
+    summary:
+      "When the last word already ends in a vowel sound, \"is\" is ـست (-st) instead of ـه: خوشمزه (delicious) → خوشمزه‌ست (khoshmazast, it is delicious), کجا (where) → کجاست (kojâst, where is it?).",
   },
   // The possessive endings are the grammar spine's own patterns (forms.ts),
   // taught here by hand because names and family cannot do without them. Once
