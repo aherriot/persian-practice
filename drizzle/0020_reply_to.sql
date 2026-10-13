@@ -1,0 +1,1 @@
+ALTER TABLE "Sentence" ADD COLUMN "replyTo" text[] DEFAULT '{}' NOT NULL;

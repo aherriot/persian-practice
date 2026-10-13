@@ -1,5 +1,6 @@
 import { normalizeForCompare } from "@/lib/normalize";
-import { componentsOf } from "./plan";
+import { formToken } from "./forms";
+import { componentsOf, sentenceText } from "./plan";
 import { EXERCISE_SKILL, targetKey, type ExerciseName, type Sentence, type Target, type ThemeContent } from "./types";
 import { acceptedAnswers, spokenWords } from "./variants";
 
@@ -32,8 +33,9 @@ export type Verdict =
  * own copy for instant feedback, but what is stored is decided here, from the
  * course rather than from what the browser says happened.
  *
- * `content` holds the sentence's words, and for sentence-building the other
- * sentences that say the same thing along with theirs and the subject pronouns.
+ * `content` holds the sentence's words; for sentence-building the other
+ * sentences that say the same thing along with theirs and the subject
+ * pronouns; and for a reply the sentences that answer this one.
  */
 export function checkAnswer(sentence: Sentence, content: ThemeContent, submission: Submission): Verdict {
   const { exercise, primary, answer } = submission;
@@ -55,6 +57,14 @@ export function checkAnswer(sentence: Sentence, content: ThemeContent, submissio
     return { ok: false, reason: "a choice is one option" };
   } else if (exercise === "listen" || exercise === "read") {
     correct = answer === sentence.english;
+  } else if (exercise === "reply-heard" || exercise === "reply-read") {
+    const said = normalizeForCompare(answer);
+    correct = content.sentences.some((other) => other.replyTo?.includes(sentence.id) && normalizeForCompare(sentenceText(other)) === said);
+  } else if (exercise === "transform") {
+    if (primary?.kind !== "pattern") return { ok: false, reason: "a form exercise is about a grammar point" };
+    const found = formToken(sentence, content.lexemes, primary.id);
+    if (!found) return { ok: false, reason: "the sentence does not show that grammar point in a word" };
+    correct = normalizeForCompare(answer) === normalizeForCompare(sentence.tokens[found.index].fa);
   } else {
     if (primary?.kind !== "lexeme") return { ok: false, reason: "a word exercise is about a word" };
     const lexeme = content.lexemes.get(primary.id);

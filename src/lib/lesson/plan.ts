@@ -1,4 +1,5 @@
 import { audioUrl, clipSpec, wordClip, type ClipSpec } from "@/lib/audio-key";
+import { applyForm, FORM_ASK, formsFor, formToken } from "./forms";
 import { otherReadings, soundDistance } from "./sounds";
 import { acceptedAnswers, spokenWords } from "./variants";
 import {
@@ -297,6 +298,70 @@ export function planSession(
     };
   };
 
+  /**
+   * A sentence that shows a grammar point is given with the word that shows
+   * it left out and that word in its plain form beside it; the learner picks
+   * the form the grammar calls for. Null if the sentence does not show the
+   * point in a way the form rules can vouch for, or leaves too little to pick from.
+   */
+  const transform = (s: Sentence, patternId: string): ChoiceExercise | null => {
+    const found = formToken(s, content.lexemes, patternId);
+    if (!found) return null;
+    const { index, form, lexeme } = found;
+    const correct = s.tokens[index].fa;
+    // The word left as it was, its other forms, and the same form of the same verb for someone else.
+    const siblings = lexeme.lemma
+      ? shuffle([...content.lexemes.values()]).filter((l) => l.lemma === lexeme.lemma && l.id !== lexeme.id && known.has(`lexeme:${l.id}`))
+      : [];
+    const wrong = [
+      lexeme.fa,
+      ...shuffle(formsFor(lexeme).filter((other) => other !== form && FORM_ASK[other])).flatMap((other) => applyForm(lexeme, other)?.fa ?? []),
+      ...siblings.flatMap((l) => [applyForm(l, form)?.fa ?? [], l.fa]).flat(),
+      // Not a verb that is negative already (نیستم): the rule would make a word that does not exist.
+    ]
+      .filter((fa) => !(form === "negated" && fa.startsWith("نن")))
+      .filter((fa) => fa !== correct);
+    const distractors = [...new Set(wrong)];
+    if (distractors.length < 2) return null;
+    return {
+      type: "choice",
+      variant: "transform",
+      key: nextKey("transform"),
+      ...graded(s, { kind: "pattern", id: patternId }),
+      ...withOptions(correct, distractors),
+      tokenIndex: index,
+      base: { fa: lexeme.fa, voc: lexeme.voc, showVowels: showVowels(lexeme.id) },
+      instruction: FORM_ASK[form],
+    };
+  };
+
+  /**
+   * Something is said, heard or read according to the skill, and the learner
+   * picks what to say back. The wrong answers are replies to other things
+   * altogether, so none of them could pass as an answer to this.
+   */
+  const reply = (s: Sentence, primary: Target, variant: "reply-heard" | "reply-read"): ChoiceExercise | null => {
+    const answers = shuffle(repliesTo(s));
+    if (answers.length === 0) return null;
+    // Whatever shares a reply with this is too near it: "Are you well?" beside "How are you?".
+    const near = new Set(answers.flatMap((r) => r.replyTo ?? []));
+    const text = (r: Sentence) => sentenceText(r);
+    const right = new Set(repliesTo(s).map(text));
+    const others = shuffle(content.sentences.filter((r) => isEligible(r) && (r.replyTo ?? []).length > 0 && !r.replyTo!.some((id) => near.has(id))))
+      .map(text)
+      .filter((option) => !right.has(option));
+    const distractors = [...new Set(others)];
+    if (distractors.length < 2) return null;
+    return {
+      type: "choice",
+      variant,
+      key: nextKey(variant),
+      ...graded(s, primary),
+      ...withOptions(text(answers[0]), distractors),
+      reply: display(answers[0]),
+    };
+  };
+
   const tiles = (s: Sentence, primary: Target | null, variant: TilesExercise["variant"] = "tiles"): TilesExercise => {
     const d = display(s);
     const inSentence = new Set(s.tokens.map((t) => t.fa));
@@ -316,6 +381,8 @@ export function planSession(
   };
 
   const isEligible = (s: Sentence) => componentsOf(s).every((c) => known.has(targetKey(c)));
+  /** The replies to a sentence that the learner could read. */
+  const repliesTo = (s: Sentence) => content.sentences.filter((r) => r.replyTo?.includes(s.id) && isEligible(r));
 
   // --- Reviews: decided before anything new is marked known, so a review
   // never leans on a word introduced later in the same session. ---
@@ -334,14 +401,29 @@ export function planSession(
     const candidates = fresh.length > 0 ? fresh : containing;
     // There is nothing to build in a sentence of one word.
     const longer = candidates.filter((s) => s.tokens.length >= 2);
-    const s = leastSeen(skill === "producing" && longer.length > 0 ? longer : candidates)[0];
-    const multiWord = s.tokens.length >= 2;
+    const ordered = leastSeen(skill === "producing" && longer.length > 0 ? longer : candidates);
     const word = kind === "lexeme";
     const reps = state.repetitions;
+    const coin = rand() < 0.5;
+
+    // Ways of asking that only some sentences allow are tried first, in the
+    // least-seen sentence that allows them: a grammar point by changing a
+    // word's form, and something understood by choosing what to say back.
+    let special: ChoiceExercise | null = null;
+    if (skill === "producing" && !word && (reps <= 1 || coin)) {
+      for (const candidate of ordered) if ((special = transform(candidate, id))) break;
+    } else if (skill !== "producing" && reps >= 1 && coin) {
+      for (const candidate of ordered) if ((special = reply(candidate, target, skill === "listening" ? "reply-heard" : "reply-read"))) break;
+    }
+    if (special) {
+      reviews.push(special);
+      continue;
+    }
+    const s = ordered[0];
+    const multiWord = s.tokens.length >= 2;
 
     // A word is met alone first and then in a sentence, each skill has its
     // own ways of asking, and the ways get harder as the word settles.
-    const coin = rand() < 0.5;
     if (skill === "listening") {
       const alone = word && saidAlone(id);
       if (alone && reps <= 1 && coin) reviews.push(wordChoice(s, id, "hear-word"));

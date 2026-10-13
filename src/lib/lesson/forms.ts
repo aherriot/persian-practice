@@ -1,5 +1,6 @@
 import type { SentenceToken } from "@/lib/db/schema";
-import type { Lexeme } from "./types";
+import { normalizeForCompare } from "@/lib/normalize";
+import type { Lexeme, Sentence } from "./types";
 
 /**
  * The shapes a word can take inside a generated sentence. The LLM author only
@@ -97,4 +98,39 @@ export function applyForm(lexeme: Lexeme, form: Form): SentenceToken | null {
     case "his":
       return { ...base, fa: `${lexeme.fa}ش`, voc: `${lexeme.voc}ِش`, translit: `${lexeme.translit}esh` };
   }
+}
+
+/**
+ * What a learner is told to do to a word to put it in each form, for the forms
+ * that change how it is written. (The linking -e changes only how it is said.)
+ */
+export const FORM_ASK: Partial<Record<Form, string>> = {
+  negated: "Make it negative",
+  is: "Make it say “is …”",
+  my: "Make it “my …”",
+  your: "Make it “your …”",
+  his: "Make it “his …” or “her …”",
+};
+
+/**
+ * The word in a sentence that shows a grammar pattern at work: one written in
+ * the form that pattern makes, exactly as the rules here would write it. Null
+ * if the sentence has none, or shows the pattern some other way (two endings
+ * at once, or an ending after a vowel, which these rules do not cover).
+ */
+export function formToken(
+  sentence: Pick<Sentence, "tokens" | "patternIds">,
+  lexemes: Map<string, Lexeme>,
+  patternId: string,
+): { index: number; form: Form; lexeme: Lexeme } | null {
+  if (!sentence.patternIds.includes(patternId)) return null;
+  for (const form of FORMS) {
+    if (FORM_PATTERN[form] !== patternId || !FORM_ASK[form]) continue;
+    for (const [index, token] of sentence.tokens.entries()) {
+      const lexeme = lexemes.get(token.lexemeId);
+      const made = lexeme && applyForm(lexeme, form);
+      if (made && normalizeForCompare(made.fa) === normalizeForCompare(token.fa)) return { index, form, lexeme };
+    }
+  }
+  return null;
 }

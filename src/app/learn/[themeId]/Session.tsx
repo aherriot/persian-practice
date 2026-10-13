@@ -25,7 +25,7 @@ function openingAudio(exercise: Exercise): string | null {
   if (exercise.type === "intro-pattern") return exercise.sentence.audioUrl;
   if (exercise.type === "tiles") return exercise.variant === "dictation" ? exercise.sentence.audioUrl : null;
   if (exercise.type !== "choice") return null;
-  if (exercise.variant === "listen") return exercise.sentence.audioUrl;
+  if (exercise.variant === "listen" || exercise.variant === "reply-heard") return exercise.sentence.audioUrl;
   if (exercise.variant === "hear-word" || exercise.variant === "hear-pick") return exercise.wordAudioUrl ?? null;
   return null;
 }
@@ -123,7 +123,7 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
         }
       }
       // Having just heard the sentence and got it right, there is no call to hear it again.
-      if (!(correct && (exercise.variant === "listen" || exercise.variant === "dictation"))) {
+      if (!(correct && (exercise.variant === "listen" || exercise.variant === "dictation" || exercise.variant === "reply-heard"))) {
         void playAudio(exercise.sentence.audioUrl);
       }
     },
@@ -269,6 +269,17 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
                 </div>
                 <SpeakButton url={exercise.sentence.audioUrl} label="Hear the sentence" />
               </div>
+              {exercise.type === "choice" && exercise.reply && (
+                <div className="mt-3 flex items-start justify-between gap-3 border-t border-ink/10 pt-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-ink/50">A natural reply</p>
+                    <SentenceView sentence={exercise.reply} revealMeaning className="text-2xl" />
+                    <p className="text-sm text-ink/70">{exercise.reply.translit}</p>
+                    <p className="text-sm font-medium text-ink">{exercise.reply.english}</p>
+                  </div>
+                  <SpeakButton url={exercise.reply.audioUrl} label="Hear the reply" />
+                </div>
+              )}
               {exercise.sentence.generated && <ReportSentence key={exercise.key} sentenceId={exercise.sentence.id} />}
             </div>
           )}
@@ -366,12 +377,15 @@ const CHOICE_PROMPT: Record<ChoiceExercise["variant"], string> = {
   read: "What does this mean?",
   "read-word": "What does this word mean?",
   pronounce: "How is this word said?",
+  "reply-heard": "What would you say back?",
+  "reply-read": "What would you say back?",
+  transform: "Change the word to fit",
   "pick-word": "Which word means this?",
   cloze: "Which word is missing?",
 };
 
 /** Exercises answered by picking Persian rather than English. */
-const PERSIAN_OPTIONS: ReadonlySet<ChoiceExercise["variant"]> = new Set(["hear-pick", "pick-word", "cloze"]);
+const PERSIAN_OPTIONS: ReadonlySet<ChoiceExercise["variant"]> = new Set(["hear-pick", "pick-word", "cloze", "transform", "reply-heard", "reply-read"]);
 
 function Choice({
   exercise,
@@ -408,15 +422,19 @@ function Choice({
 
   return (
     <>
-      <Eyebrow>{CHOICE_PROMPT[exercise.variant]}</Eyebrow>
+      <Eyebrow>{exercise.instruction ?? CHOICE_PROMPT[exercise.variant]}</Eyebrow>
 
       <div className="flex min-h-28 flex-col items-center justify-center gap-3 text-center">
-        {exercise.variant === "listen" && <SpeakButton url={exercise.sentence.audioUrl} label="Hear it again" large />}
+        {(exercise.variant === "listen" || exercise.variant === "reply-heard") && (
+          <SpeakButton url={exercise.sentence.audioUrl} label="Hear it again" large />
+        )}
         {(exercise.variant === "hear-word" || exercise.variant === "hear-pick") && exercise.wordAudioUrl && (
           <SpeakButton url={exercise.wordAudioUrl} label="Hear it again" large />
         )}
         {/* Reading is tested with nothing to lean on: no sound, and no pronunciation behind a tap. */}
-        {exercise.variant === "read" && <SentenceView sentence={exercise.sentence} revealMeaning={false} hints={false} />}
+        {(exercise.variant === "read" || exercise.variant === "reply-read") && (
+          <SentenceView sentence={exercise.sentence} revealMeaning={false} hints={false} />
+        )}
         {exercise.variant === "read-word" && token && (
           <p dir="rtl" lang="fa" className="text-5xl leading-[1.9] text-ink">
             {shown(token)}
@@ -429,6 +447,15 @@ function Choice({
           </p>
         )}
         {exercise.variant === "pick-word" && token && <p className="text-2xl font-semibold text-ink">{token.gloss}</p>}
+        {exercise.variant === "transform" && exercise.base && (
+          <>
+            <p className="text-base font-medium text-ink">{exercise.sentence.english}</p>
+            <p dir="rtl" lang="fa" className="rounded-md border border-ink/20 bg-sand px-3 py-1 text-2xl leading-[1.8] text-ink">
+              {shown(exercise.base)}
+            </p>
+            <SentenceView sentence={exercise.sentence} revealMeaning={false} blankIndex={exercise.tokenIndex} />
+          </>
+        )}
         {exercise.variant === "cloze" && (
           <>
             <p className="text-base font-medium text-ink">{exercise.sentence.english}</p>

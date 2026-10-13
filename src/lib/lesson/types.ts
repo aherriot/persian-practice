@@ -36,6 +36,8 @@ export type Sentence = {
   generated: boolean;
   /** May introduce its one new word or pattern. Off the ladder, a sentence only practises what is known. */
   ladder: boolean;
+  /** The sentences this one is a natural reply to, by id. */
+  replyTo?: string[];
 };
 
 export type ThemeContent = {
@@ -162,13 +164,16 @@ export const EXERCISE_SKILL = {
   "hear-word": "listening", // hear a word, pick its meaning
   "hear-pick": "listening", // hear a word, pick which written word it was
   dictation: "listening", // hear a sentence, build it from its words
+  "reply-heard": "listening", // hear something said, pick what to say back
   // Persian text alone; no sound until answered.
   read: "reading", // read a sentence, pick its meaning
   "read-word": "reading", // read a word, pick its meaning
   pronounce: "reading", // read a word without its vowel marks, pick how it is said
+  "reply-read": "reading", // read something said, pick what to say back
   // A meaning, to be answered in Persian.
   "pick-word": "producing", // see a meaning, pick the Persian word
   cloze: "producing", // pick the word missing from a sentence
+  transform: "producing", // put a word into the form a grammar point calls for
   tiles: "producing", // build a sentence from its words
 } as const satisfies Record<string, Skill>;
 export type ExerciseName = keyof typeof EXERCISE_SKILL;
@@ -181,6 +186,11 @@ export type ChoiceExercise = Graded & {
   /** For an exercise about one word: where that word is in the sentence. */
   tokenIndex?: number;
   wordAudioUrl?: string;
+  /** transform: the word as it is before the change, and what the learner is told to do to it. */
+  base?: { fa: string; voc: string; showVowels: boolean };
+  instruction?: string;
+  /** reply: the right answer in full, shown once the learner has chosen. */
+  reply?: DisplaySentence;
 };
 
 export type TilesExercise = Graded & {
