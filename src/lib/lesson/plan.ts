@@ -57,6 +57,14 @@ export type Distractor = { english: string; length: number };
 export const DEFAULT_MAX_NEW = 3;
 export const DEFAULT_MAX_REVIEW = 8;
 
+/**
+ * How many new things a session may teach when it already has `reviews` to
+ * do. Review comes first: new material gets only the share of the session
+ * that review leaves free, and none once review fills it.
+ */
+export const roomForNew = (reviews: number, maxNew: number, maxReview: number) =>
+  maxReview <= 0 ? maxNew : Math.max(0, Math.ceil(maxNew * (1 - reviews / maxReview)));
+
 /** One skill of one word or grammar point, up for review. */
 export type Due = { key: string; skill: Skill; state: SkillState };
 
@@ -121,9 +129,10 @@ export function componentsOf(s: Sentence): Target[] {
 /**
  * Plans a whole session up front so the client never waits between exercises.
  *
- * New material comes off the theme's ladder in order, at most `maxNew` things
- * per session. Reviews are whatever is due, each practised inside a sentence
- * made only of things the learner already knows.
+ * Reviews are whatever is due, each practised inside a sentence made only of
+ * things the learner already knows, and they come first. New material comes
+ * off the theme's ladder in order, at most `maxNew` things per session and
+ * fewer the more there is to review (`roomForNew`).
  */
 export function planSession(
   content: ThemeContent,
@@ -440,15 +449,20 @@ export function planSession(
     else reviews.push(tiles(s, target));
   }
 
-  // --- New material, in ladder order. ---
+  // --- New material, in ladder order, in whatever room the reviews leave. ---
+  const room = roomForNew(reviews.length, maxNew, maxReview);
   const blocks: Exercise[][] = [];
   const deferred: Exercise[] = [];
   let newCount = 0;
+  let newHeldBack = false;
   for (const s of content.sentences) {
     if (!s.ladder) continue;
     const unknown = componentsOf(s).filter((c) => !known.has(targetKey(c)));
     if (unknown.length === 0) continue;
-    if (newCount + unknown.length > maxNew) break;
+    if (newCount + unknown.length > room) {
+      newHeldBack = newCount + unknown.length <= maxNew;
+      break;
+    }
     for (const target of unknown) {
       known.add(targetKey(target));
       newCount++;
@@ -482,16 +496,10 @@ export function planSession(
     }
   }
 
-  // --- Interleave: a couple of reviews before each new thing, then the
-  // harder sentence-building for the new things once they have settled. By
-  // the end each new thing has been asked for in all three skills. ---
-  const exercises: Exercise[] = [];
-  let r = 0;
-  for (const block of blocks) {
-    exercises.push(...reviews.slice(r, r + 2), ...block);
-    r += 2;
-  }
-  exercises.push(...reviews.slice(r), ...deferred);
+  // --- Everything due, then each new thing, then the harder
+  // sentence-building for the new things once they have settled. By the end
+  // each new thing has been asked for in all three skills. ---
+  const exercises: Exercise[] = [...reviews, ...blocks.flat(), ...deferred];
 
   // --- Nothing due and nothing new: ungraded practice so a session is never empty. ---
   if (exercises.length < minExercises) {
@@ -503,5 +511,5 @@ export function planSession(
     }
   }
 
-  return { exercises, newCount, reviewCount: reviews.length };
+  return { exercises, newCount, reviewCount: reviews.length, newHeldBack };
 }

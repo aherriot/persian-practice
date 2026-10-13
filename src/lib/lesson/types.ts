@@ -211,4 +211,6 @@ export type SessionPlan = {
   exercises: Exercise[];
   newCount: number;
   reviewCount: number;
+  /** There was something new to teach, and it was left for later because of how much there is to review. */
+  newHeldBack: boolean;
 };

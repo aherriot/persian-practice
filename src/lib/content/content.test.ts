@@ -50,7 +50,8 @@ test("a learner taking the themes in order is taught every word and pattern exac
     const content = buildTheme(theme);
     for (let session = 0; ; session++) {
       assert.ok(session < 100, `${theme.id}: the ladder never ran out`);
-      const plan = planSession(content, knowledge, { now, seed: session });
+      // Nothing is answered here, so everything met stays due; with reviews left out, that does not hold new material back.
+      const plan = planSession(content, knowledge, { now, seed: session, maxReview: 0 });
       for (const exercise of plan.exercises) {
         if (exercise.type === "intro-lexeme" || exercise.type === "intro-pattern") {
           introduced.push(targetKey(exercise.target));
