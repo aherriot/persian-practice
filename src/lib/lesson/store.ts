@@ -176,14 +176,18 @@ export async function introduce(userId: string, target: Target, now = new Date()
     .onConflictDoNothing();
 }
 
-export type AnswerResult = { ok: true; correct: boolean } | { ok: false; reason: string };
+export type AnswerResult = { ok: true; correct: boolean; duplicate: boolean } | { ok: false; reason: string };
 
 /**
  * Marks what the learner did and records it. The browser says only what was
  * picked or built; whether that was right, and what it says about each word in
  * the sentence, is worked out here.
+ *
+ * `key` identifies the answer. The browser sends an answer again when it
+ * cannot tell whether the first attempt arrived, so the same key may come
+ * twice; the second changes nothing.
  */
-export async function recordAnswer(userId: string, submission: Submission, now = new Date()): Promise<AnswerResult> {
+export async function recordAnswer(userId: string, submission: Submission, key: string, now = new Date()): Promise<AnswerResult> {
   // A sentence retired since the session was planned can still be answered.
   const [sentence] = await db
     .select()
@@ -220,25 +224,41 @@ export async function recordAnswer(userId: string, submission: Submission, now =
   if (!verdict.ok) return verdict;
   const updates = applyAnswer(states, verdict.primary, verdict.others, verdict.correct, now);
 
-  await Promise.all([
-    db.insert(reviewLog).values({
-      userId,
-      sentenceId: sentence.id,
-      exercise: submission.exercise,
-      correct: verdict.correct,
-      target: verdict.primary ? targetKey(verdict.primary) : null,
-      picked: verdict.picked,
-    }),
-    ...[...updates].map(([key, state]) => {
-      const kind = key.slice(0, key.indexOf(":")) as Target["kind"];
-      const refId = key.slice(key.indexOf(":") + 1);
-      return db
-        .update(knowledge)
-        .set(state)
-        .where(and(eq(knowledge.userId, userId), eq(knowledge.kind, kind), eq(knowledge.refId, refId)));
-    }),
-  ]);
-  return { ok: true, correct: verdict.correct };
+  // One statement, so the log entry and the schedule changes happen together or
+  // not at all (the HTTP driver has no transactions to hold them together
+  // otherwise). The schedule moves only if the log entry is new, which is what
+  // makes a repeated key harmless, and only for items still as they were read
+  // above: if another answer got to one first, it is no longer due and this
+  // answer would not have moved it anyway.
+  const logged = sql`
+    insert into ${reviewLog} ("id", "userId", "sentenceId", "exercise", "correct", "target", "picked", "key")
+    values (${crypto.randomUUID()}, ${userId}, ${sentence.id}, ${submission.exercise}, ${verdict.correct},
+      ${verdict.primary ? targetKey(verdict.primary) : null}, ${verdict.picked}, ${key})
+    on conflict ("key") do nothing
+    returning "id"`;
+  const moves = [...updates].map(([target, next]) => {
+    const was = states.get(target)!;
+    const kind = target.slice(0, target.indexOf(":"));
+    const refId = target.slice(target.indexOf(":") + 1);
+    return sql`(${kind}, ${refId}, ${next.stability}::real, ${next.difficulty}::real, ${next.intervalDays}::real, ${next.repetitions}::int,
+      ${next.lapses}::int, ${next.dueAt.toISOString()}::timestamp, ${was.dueAt.toISOString()}::timestamp, ${was.lapses}::int)`;
+  });
+  const moved =
+    moves.length === 0
+      ? sql``
+      : sql`, moved as (
+          update ${knowledge} k
+          set "stability" = v."stability", "difficulty" = v."difficulty", "intervalDays" = v."intervalDays",
+            "repetitions" = v."repetitions", "lapses" = v."lapses", "dueAt" = v."dueAt", "lastReviewedAt" = ${now.toISOString()}::timestamp
+          from (values ${sql.join(moves, sql`, `)})
+            as v("kind", "refId", "stability", "difficulty", "intervalDays", "repetitions", "lapses", "dueAt", "wasDueAt", "wasLapses")
+          where k."userId" = ${userId} and k."kind" = v."kind" and k."refId" = v."refId"
+            and k."dueAt" = v."wasDueAt" and k."lapses" = v."wasLapses"
+            and exists (select 1 from logged)
+          returning 1
+        )`;
+  const result = await db.execute<{ logged: number }>(sql`with logged as (${logged})${moved} select count(*)::int as "logged" from logged`);
+  return { ok: true, correct: verdict.correct, duplicate: result.rows[0].logged === 0 };
 }
 
 export type ThemeSummary = {
