@@ -174,8 +174,8 @@ export const sentences = pgTable(
   ],
 );
 
-// SM-2 state, one row per (user, lexeme or pattern). Sentences are not
-// scheduled; they are the vehicle that exercises these.
+// FSRS state (src/lib/srs.ts), one row per (user, lexeme or pattern). Sentences
+// are not scheduled; they are the vehicle that exercises these.
 export const knowledge = pgTable(
   "Knowledge",
   {
@@ -185,10 +185,13 @@ export const knowledge = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     kind: text("kind").$type<"lexeme" | "pattern">().notNull(),
     refId: text("refId").notNull(),
+    // Days for recall to fall to 90%, and how hard the item is (1–10). Both
+    // zero until it has been answered once.
+    stability: real("stability").notNull().default(0),
+    difficulty: real("difficulty").notNull().default(0),
     intervalDays: real("intervalDays").notNull().default(0),
-    easeFactor: real("easeFactor").notNull().default(2.5),
-    repetitions: integer("repetitions").notNull().default(0),
-    lapses: integer("lapses").notNull().default(0),
+    repetitions: integer("repetitions").notNull().default(0), // right answers in a row
+    lapses: integer("lapses").notNull().default(0), // wrong answers ever
     dueAt: timestamp("dueAt", { precision: 3 }).notNull(),
     lastReviewedAt: timestamp("lastReviewedAt", { precision: 3 }),
     introducedAt: timestampDefaultNow("introducedAt"),

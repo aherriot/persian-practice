@@ -7,7 +7,7 @@ import { isFluent, isReadyForMore, measureProgress } from "./progress.ts";
 import { targetKey, type KnowledgeState } from "./types.ts";
 
 const content = buildTheme(SHOPPING);
-const state = (repetitions: number): KnowledgeState => ({ intervalDays: 1, easeFactor: 2.5, repetitions, lapses: 0, dueAt: new Date() });
+const state = (repetitions: number): KnowledgeState => ({ stability: 1, difficulty: 5, intervalDays: 1, repetitions, lapses: 0, dueAt: new Date(), lastReviewedAt: null });
 const all = [...new Set(content.sentences.flatMap((s) => componentsOf(s).map(targetKey)))];
 const onLadder = new Set(all);
 

@@ -190,7 +190,7 @@ export async function recordAnswer(userId: string, input: AnswerInput, now = new
       const refId = key.slice(key.indexOf(":") + 1);
       return db
         .update(knowledge)
-        .set({ ...state, lastReviewedAt: now })
+        .set(state)
         .where(and(eq(knowledge.userId, userId), eq(knowledge.kind, kind), eq(knowledge.refId, refId)));
     }),
   ]);

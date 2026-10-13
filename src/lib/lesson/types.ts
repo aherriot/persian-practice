@@ -48,12 +48,17 @@ export type Kind = "lexeme" | "pattern";
 export type Target = { kind: Kind; id: string };
 export const targetKey = (t: Target) => `${t.kind}:${t.id}`;
 
+/** One word or grammar point for one learner: its FSRS memory state (see src/lib/srs.ts) and when it is next due. */
 export type KnowledgeState = {
+  stability: number;
+  difficulty: number;
   intervalDays: number;
-  easeFactor: number;
+  /** Right answers in a row. */
   repetitions: number;
+  /** Wrong answers ever. */
   lapses: number;
   dueAt: Date;
+  lastReviewedAt: Date | null;
 };
 
 // --- What the client receives. Every exercise is self-contained, so moving to

@@ -1,10 +1,10 @@
-import { NEW_ITEM_STATE, reviewItem } from "@/lib/srs";
+import { NEW_ITEM_STATE, reviewItem, type Grade } from "@/lib/srs";
 import { targetKey, type KnowledgeState, type Target } from "./types";
 
 const HOUR = 60 * 60 * 1000;
 
 /**
- * SM-2 schedules to the minute; a learner who practised at 9pm yesterday and
+ * The scheduler works to the minute; a learner who practised at 9pm yesterday and
  * sits down at 8am today should still get yesterday's items. Pulling each due
  * time earlier by a few hours makes "tomorrow" mean the next sitting.
  */
@@ -15,7 +15,7 @@ export function introducedState(now: Date): KnowledgeState {
 }
 
 /**
- * New SM-2 states after one graded exercise, keyed like the input map.
+ * New scheduling states after one graded exercise, keyed like the input map.
  *
  * Right: everything in the sentence that was due advances; things not yet due
  * are left alone, so meeting a word again early does not inflate its interval.
@@ -30,29 +30,23 @@ export function applyAnswer(
   now: Date,
 ): Map<string, KnowledgeState> {
   const updates = new Map<string, KnowledgeState>();
-  const schedule = (key: string, state: KnowledgeState, quality: 2 | 4) => {
-    const next = reviewItem(state, quality, now);
-    updates.set(key, {
-      intervalDays: next.intervalDays,
-      easeFactor: next.easeFactor,
-      repetitions: next.repetitions,
-      lapses: next.lapses,
-      dueAt: new Date(next.dueAt.getTime() - DUE_SLACK_MS),
-    });
+  const schedule = (key: string, state: KnowledgeState, grade: Grade) => {
+    const next = reviewItem(state, grade, now);
+    updates.set(key, { ...next, dueAt: new Date(next.dueAt.getTime() - DUE_SLACK_MS) });
   };
 
   if (correct) {
     for (const target of primary ? [primary, ...others] : others) {
       const key = targetKey(target);
       const state = states.get(key);
-      if (state && state.dueAt <= now) schedule(key, state, 4);
+      if (state && state.dueAt <= now) schedule(key, state, "good");
     }
   } else if (primary) {
     const key = targetKey(primary);
     const state = states.get(key);
     // Already lapsed and waiting: a second miss in the same sitting is not new information.
     const alreadyLapsed = state && state.repetitions === 0 && state.dueAt > now;
-    if (state && !alreadyLapsed) schedule(key, state, 2);
+    if (state && !alreadyLapsed) schedule(key, state, "again");
   }
   return updates;
 }

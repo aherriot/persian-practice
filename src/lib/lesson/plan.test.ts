@@ -14,10 +14,12 @@ const DAY = 24 * 60 * 60 * 1000;
 
 const state = (repetitions: number, dueInDays: number): KnowledgeState => ({
   intervalDays: 1,
-  easeFactor: 2.5,
+  stability: 1,
+  difficulty: 5,
   repetitions,
   lapses: 0,
   dueAt: new Date(NOW.getTime() + dueInDays * DAY),
+  lastReviewedAt: null,
 });
 
 /** Knowledge of everything the first `n` ladder sentences use. */
