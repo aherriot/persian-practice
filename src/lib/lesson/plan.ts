@@ -1,6 +1,7 @@
 import { audioUrl, clipSpec, wordClip, type ClipSpec } from "@/lib/audio-key";
 import { acceptedAnswers } from "./variants";
 import {
+  SKILLS,
   targetKey,
   type ChoiceExercise,
   type DisplaySentence,
@@ -8,12 +9,14 @@ import {
   type KnowledgeState,
   type Sentence,
   type SessionPlan,
+  type Skill,
+  type SkillState,
   type Target,
   type ThemeContent,
   type TilesExercise,
 } from "./types";
 
-/** Short-vowel marks stay on a word until it has survived this many reviews. */
+/** Short-vowel marks stay on a word until it has been read right this many times running. */
 export const VOWEL_FADE_REPS = 3;
 
 export type PlanOptions = {
@@ -46,20 +49,39 @@ export type Distractor = { english: string; length: number };
 export const DEFAULT_MAX_NEW = 3;
 export const DEFAULT_MAX_REVIEW = 8;
 
-/** What a session reviews: what is due, most overdue first, or the things it was asked for. */
-export function dueTargets(
-  knowledge: Map<string, KnowledgeState>,
-  now: Date,
-  max: number,
-  review?: string[],
-): [string, KnowledgeState][] {
+/** One skill of one word or grammar point, up for review. */
+export type Due = { key: string; skill: Skill; state: SkillState };
+
+/** Where equally due skills of one thing start from: spread by the thing, so a session is not all of one skill. */
+const firstSkill = (key: string) => [...key].reduce((sum, char) => sum + char.charCodeAt(0), 0) % SKILLS.length;
+
+/**
+ * What a session reviews: the skills that are due, most overdue first, or the
+ * weakest skill of each thing it was asked for. Each thing comes up in one
+ * skill before any comes up in a second.
+ */
+export function dueTargets(knowledge: Map<string, KnowledgeState>, now: Date, max: number, review?: string[]): Due[] {
+  const skillsOf = (key: string, state: KnowledgeState): Due[] => {
+    const from = firstSkill(key);
+    return SKILLS.map((_, i) => SKILLS[(from + i) % SKILLS.length]).map((skill) => ({ key, skill, state: state.skills[skill] }));
+  };
   if (review) {
-    return review.flatMap((key): [string, KnowledgeState][] => (knowledge.has(key) ? [[key, knowledge.get(key)!]] : [])).slice(0, max);
+    return review
+      .flatMap((key) => {
+        const state = knowledge.get(key);
+        if (!state) return [];
+        const weakest = (a: Due, b: Due) => a.state.repetitions - b.state.repetitions || a.state.dueAt.getTime() - b.state.dueAt.getTime();
+        return skillsOf(key, state).sort(weakest).slice(0, 1);
+      })
+      .slice(0, max);
   }
-  return [...knowledge.entries()]
-    .filter(([, state]) => state.dueAt <= now)
-    .sort((a, b) => a[1].dueAt.getTime() - b[1].dueAt.getTime())
-    .slice(0, max);
+  const due = [...knowledge.entries()]
+    .flatMap(([key, state]) => skillsOf(key, state))
+    .filter(({ state }) => state.dueAt <= now)
+    .sort((a, b) => a.state.dueAt.getTime() - b.state.dueAt.getTime());
+  const first = due.filter((item, i) => due.findIndex((other) => other.key === item.key) === i);
+  const again = due.filter((item) => !first.includes(item));
+  return [...first, ...again].slice(0, max);
 }
 
 function mulberry32(seed: number): () => number {
@@ -123,12 +145,15 @@ export function planSession(
   let counter = 0;
   const nextKey = (label: string) => `${label}-${counter++}`;
 
+  // Vowel marks are a reading aid, so it is reading that fades them.
+  const showVowels = (lexemeId: string) => (knowledge.get(`lexeme:${lexemeId}`)?.skills.reading.repetitions ?? 0) < VOWEL_FADE_REPS;
+
   const display = (s: Sentence): DisplaySentence => ({
     id: s.id,
     tokens: s.tokens.map((t) => ({
       ...t,
       gloss: content.lexemes.get(t.lexemeId)?.gloss ?? "",
-      showVowels: (knowledge.get(`lexeme:${t.lexemeId}`)?.repetitions ?? 0) < VOWEL_FADE_REPS,
+      showVowels: showVowels(t.lexemeId),
     })),
     endPunct: s.endPunct,
     english: s.english,
@@ -169,16 +194,35 @@ export function planSession(
     return { type: "choice", variant, key: nextKey(variant), ...graded(s, primary), ...withOptions(s.english, others) };
   };
 
-  const wordChoice = (s: Sentence, lexemeId: string): ChoiceExercise => {
+  const wordChoice = (s: Sentence, lexemeId: string, variant: "hear-word" | "read-word"): ChoiceExercise => {
     const lexeme = content.lexemes.get(lexemeId)!;
     const mixedUp = confusedWith(lexemeId).map((l) => l.gloss);
     const glosses = [...mixedUp, ...shuffle([...content.lexemes.values()]).map((l) => l.gloss)].filter((gloss) => gloss !== lexeme.gloss);
     return {
       type: "choice",
-      variant: "word",
-      key: nextKey("word"),
+      variant,
+      key: nextKey(variant),
       ...graded(s, { kind: "lexeme", id: lexemeId }),
       ...withOptions(lexeme.gloss, [...new Set(glosses)]),
+      tokenIndex: s.tokens.findIndex((t) => t.lexemeId === lexemeId),
+      wordAudioUrl: audioUrl(wordClip(lexeme)),
+    };
+  };
+
+  /** The meaning is shown; the learner picks the Persian word for it. */
+  const pickWord = (s: Sentence, lexemeId: string): ChoiceExercise => {
+    const lexeme = content.lexemes.get(lexemeId)!;
+    // Another word for the same thing would be a second right answer.
+    const pool = shuffle([...content.lexemes.values()]).filter((l) => l.fa !== lexeme.fa && l.gloss !== lexeme.gloss);
+    const mixedUp = new Set(confusedWith(lexemeId).map((l) => l.id));
+    const rank = (l: (typeof pool)[number]) => (mixedUp.has(l.id) ? 0 : known.has(`lexeme:${l.id}`) ? 1 : 2);
+    const distractors = pool.sort((a, b) => rank(a) - rank(b)).map((l) => l.fa);
+    return {
+      type: "choice",
+      variant: "pick-word",
+      key: nextKey("pick-word"),
+      ...graded(s, { kind: "lexeme", id: lexemeId }),
+      ...withOptions(lexeme.fa, [...new Set(distractors)]),
       tokenIndex: s.tokens.findIndex((t) => t.lexemeId === lexemeId),
       wordAudioUrl: audioUrl(wordClip(lexeme)),
     };
@@ -210,9 +254,10 @@ export function planSession(
     const extras = shuffle([...content.lexemes.values()])
       .filter((l) => known.has(`lexeme:${l.id}`) && !inSentence.has(l.fa))
       .slice(0, 2)
-      .map((l) => ({ fa: l.fa, voc: l.voc, showVowels: (knowledge.get(`lexeme:${l.id}`)?.repetitions ?? 0) < VOWEL_FADE_REPS }));
+      .map((l) => ({ fa: l.fa, voc: l.voc, showVowels: showVowels(l.id) }));
     return {
       type: "tiles",
+      variant: "tiles",
       key: nextKey("tiles"),
       ...graded(s, primary),
       tiles: shuffle([...d.tokens.map((t) => ({ fa: t.fa, voc: t.voc, showVowels: t.showVowels })), ...extras]),
@@ -227,7 +272,7 @@ export function planSession(
   const due = dueTargets(knowledge, now, maxReview, opts.review);
 
   const reviews: Exercise[] = [];
-  for (const [key, state] of due) {
+  for (const { key, skill, state } of due) {
     const kind = key.slice(0, key.indexOf(":")) as Target["kind"];
     const id = key.slice(key.indexOf(":") + 1);
     const target: Target = { kind, id };
@@ -236,14 +281,20 @@ export function planSession(
     );
     if (containing.length === 0) continue; // belongs to another theme
     const fresh = containing.filter((s) => !usedSentences.has(s.id));
-    const s = leastSeen(fresh.length > 0 ? fresh : containing)[0];
+    const candidates = fresh.length > 0 ? fresh : containing;
+    // There is nothing to build in a sentence of one word.
+    const longer = candidates.filter((s) => s.tokens.length >= 2);
+    const s = leastSeen(skill === "producing" && longer.length > 0 ? longer : candidates)[0];
     const multiWord = s.tokens.length >= 2;
+    const word = kind === "lexeme";
     const reps = state.repetitions;
 
-    if (reps >= 3 && multiWord) reviews.push(tiles(s, target));
-    else if (kind === "lexeme" && reps === 2 && multiWord) reviews.push(cloze(s, id));
-    else if (kind === "lexeme" && reps <= 1 && rand() < 0.5) reviews.push(wordChoice(s, id));
-    else reviews.push(meaningChoice(s, target, kind === "pattern" && reps <= 1 ? "read" : "listen"));
+    // A word is met alone first and then in a sentence, and each skill has its own way of asking.
+    if (skill === "listening") reviews.push(word && reps <= 1 && rand() < 0.5 ? wordChoice(s, id, "hear-word") : meaningChoice(s, target, "listen"));
+    else if (skill === "reading") reviews.push(word && reps <= 1 && rand() < 0.5 ? wordChoice(s, id, "read-word") : meaningChoice(s, target, "read"));
+    else if (word && (reps <= 1 || !multiWord)) reviews.push(pickWord(s, id));
+    else if (word && reps === 2) reviews.push(cloze(s, id));
+    else reviews.push(tiles(s, target));
   }
 
   // --- New material, in ladder order. ---
@@ -268,9 +319,10 @@ export function planSession(
             lexeme: { ...lexeme, audioUrl: audioUrl(wordClip(lexeme)) },
             sentence: display(s),
           },
-          wordChoice(s, target.id),
+          wordChoice(s, target.id, "read-word"),
           meaningChoice(s, target, "listen"),
         ]);
+        deferred.push(s.tokens.length >= 2 ? tiles(s, target) : pickWord(s, target.id));
       } else {
         blocks.push([
           {
@@ -280,15 +332,16 @@ export function planSession(
             pattern: content.patterns.get(target.id)!,
             sentence: display(s),
           },
-          meaningChoice(s, target, "listen"),
+          meaningChoice(s, target, "read"),
         ]);
+        deferred.push(meaningChoice(s, target, "listen"), tiles(s, target));
       }
-      if (s.tokens.length >= 2) deferred.push(tiles(s, target));
     }
   }
 
   // --- Interleave: a couple of reviews before each new thing, then the
-  // harder sentence-building for the new things once they have settled. ---
+  // harder sentence-building for the new things once they have settled. By
+  // the end each new thing has been asked for in all three skills. ---
   const exercises: Exercise[] = [];
   let r = 0;
   for (const block of blocks) {
@@ -302,7 +355,8 @@ export function planSession(
     const spare = leastSeen(content.sentences.filter((s) => isEligible(s) && !usedSentences.has(s.id)));
     for (const s of spare) {
       if (exercises.length >= minExercises) break;
-      exercises.push(s.tokens.length >= 2 && rand() < 0.5 ? tiles(s, null) : meaningChoice(s, null, "listen"));
+      const roll = rand();
+      exercises.push(s.tokens.length >= 2 && roll < 0.4 ? tiles(s, null) : meaningChoice(s, null, roll < 0.7 ? "listen" : "read"));
     }
   }
 

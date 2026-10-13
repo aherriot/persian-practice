@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { closeTestDb, createTestDb, emptyTestDb, type TestDb } from "./db/test-db.ts";
 import { knowledge, reviewLog, users } from "./db/schema.ts";
 import type { Email } from "./reminders.ts";
+import { SKILLS } from "./lesson/types.ts";
 
 let db: TestDb;
 let reminders: typeof import("./reminders.ts");
@@ -99,7 +100,10 @@ async function addLearner(id: string, learner: Learner = {}) {
   const due = learner.dueInHours ?? [-5];
   if (due.length > 0) {
     await db.insert(knowledge).values(
-      due.map((hours, i) => ({ userId: id, kind: "lexeme" as const, refId: `word-${i}`, dueAt: new Date(NOW.getTime() + hours * HOUR) })),
+      // Due in every skill, as a word just met is: still one thing due.
+      due.flatMap((hours, i) =>
+        SKILLS.map((skill) => ({ userId: id, kind: "lexeme" as const, refId: `word-${i}`, skill, dueAt: new Date(NOW.getTime() + hours * HOUR) })),
+      ),
     );
   }
   const answered = learner.answeredHoursAgo ?? [];

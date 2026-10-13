@@ -4,10 +4,10 @@ import { buildTheme } from "../content/build.ts";
 import { SHOPPING } from "../content/shopping.ts";
 import { componentsOf } from "./plan.ts";
 import { isFluent, isReadyForMore, measureProgress } from "./progress.ts";
-import { targetKey, type KnowledgeState } from "./types.ts";
+import { evenly, targetKey, type KnowledgeState } from "./types.ts";
 
 const content = buildTheme(SHOPPING);
-const state = (repetitions: number): KnowledgeState => ({ stability: 1, difficulty: 5, intervalDays: 1, repetitions, lapses: 0, dueAt: new Date(), lastReviewedAt: null });
+const state = (repetitions: number): KnowledgeState => evenly({ stability: 1, difficulty: 5, intervalDays: 1, repetitions, lapses: 0, dueAt: new Date(), lastReviewedAt: null });
 const all = [...new Set(content.sentences.flatMap((s) => componentsOf(s).map(targetKey)))];
 const onLadder = new Set(all);
 

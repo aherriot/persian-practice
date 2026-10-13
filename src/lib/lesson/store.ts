@@ -3,9 +3,22 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db";
 import { knowledge, lexemes, patterns, reviewLog, sentences, themes } from "@/lib/db/schema";
 import { checkAnswer, type Submission } from "./check";
-import { applyAnswer, introducedState } from "./grade";
+import { applyAnswer, introducedSkill } from "./grade";
 import { componentsOf } from "./plan";
-import { targetKey, type Kind, type KnowledgeState, type Lexeme, type Pattern, type Sentence, type Target } from "./types";
+import {
+  EXERCISE_SKILL,
+  knowledgeOf,
+  SKILLS,
+  targetKey,
+  type Kind,
+  type KnowledgeState,
+  type Lexeme,
+  type Pattern,
+  type Sentence,
+  type Skill,
+  type SkillState,
+  type Target,
+} from "./types";
 
 /** Lexemes, themes and sentences are visible when curated (no owner) or the learner's own. */
 export const visibleLexeme = (userId: string) => or(isNull(lexemes.ownerId), eq(lexemes.ownerId, userId))!;
@@ -20,7 +33,7 @@ export const textArray = (values: string[]) =>
 
 /** The ids of what a learner has met, as a subquery. */
 export const knownIds = (userId: string, kind: Kind) =>
-  sql`(select ${knowledge.refId} from ${knowledge} where ${knowledge.userId} = ${userId} and ${knowledge.kind} = ${kind})`;
+  sql`(select distinct ${knowledge.refId} from ${knowledge} where ${knowledge.userId} = ${userId} and ${knowledge.kind} = ${kind})`;
 
 /** Every id in an array column is one of `ids` (a subquery or a list). */
 export const allIn = (column: AnyPgColumn, ids: SQL) =>
@@ -155,24 +168,38 @@ export async function retireSentence(userId: string, sentenceId: string): Promis
     .where(and(eq(sentences.id, sentenceId), eq(sentences.generated, true), visibleSentence(userId)));
 }
 
+const onlyTargets = (only?: Target[]) =>
+  only ? inArray(sql`${knowledge.kind} || ':' || ${knowledge.refId}`, only.map(targetKey)) : undefined;
+
+/** What the learner has met, each thing with the state of all its skills. */
 export async function loadKnowledge(userId: string, only?: Target[]): Promise<Map<string, KnowledgeState>> {
   const rows = await db
     .select()
     .from(knowledge)
-    .where(
-      and(
-        eq(knowledge.userId, userId),
-        only ? inArray(sql`${knowledge.kind} || ':' || ${knowledge.refId}`, only.map(targetKey)) : undefined,
-      ),
-    );
+    .where(and(eq(knowledge.userId, userId), onlyTargets(only)));
+  const skills = new Map<string, Partial<Record<Skill, SkillState>>>();
+  for (const row of rows) {
+    const key = targetKey({ kind: row.kind, id: row.refId });
+    skills.set(key, { ...skills.get(key), [row.skill]: row });
+  }
+  return new Map([...skills].map(([key, states]) => [key, knowledgeOf(states)]));
+}
+
+/** The state of one skill for each of `only`. */
+export async function loadSkill(userId: string, skill: Skill, only: Target[]): Promise<Map<string, SkillState>> {
+  if (only.length === 0) return new Map();
+  const rows = await db
+    .select()
+    .from(knowledge)
+    .where(and(eq(knowledge.userId, userId), eq(knowledge.skill, skill), onlyTargets(only)));
   return new Map(rows.map((row) => [targetKey({ kind: row.kind, id: row.refId }), row]));
 }
 
-/** Marks something as met. Safe to repeat: a second introduction changes nothing. */
+/** Marks something as met, in every skill. Safe to repeat: a second introduction changes nothing. */
 export async function introduce(userId: string, target: Target, now = new Date()): Promise<void> {
   await db
     .insert(knowledge)
-    .values({ userId, kind: target.kind, refId: target.id, ...introducedState(now) })
+    .values(SKILLS.map((skill) => ({ userId, kind: target.kind, refId: target.id, skill, ...introducedSkill(now) })))
     .onConflictDoNothing();
 }
 
@@ -197,6 +224,8 @@ export async function recordAnswer(userId: string, submission: Submission, key: 
   if (!sentence) return { ok: false, reason: "unknown sentence" };
 
   const building = submission.exercise === "tiles";
+  // Only the skill the exercise tested is moved by the answer.
+  const skill = EXERCISE_SKILL[submission.exercise];
   const [alternates, lexemeRows, states] = await Promise.all([
     building
       ? db.select().from(sentences).where(and(sameMeaning(userId, [sentence.english]), ne(sentences.id, sentence.id)))
@@ -213,7 +242,7 @@ export async function recordAnswer(userId: string, submission: Submission, key: 
             : inArray(lexemes.id, sentence.lexemeIds),
         ),
       ),
-    loadKnowledge(userId, componentsOf(sentence)),
+    loadSkill(userId, skill, componentsOf(sentence)),
   ]);
 
   const verdict = checkAnswer(
@@ -252,7 +281,7 @@ export async function recordAnswer(userId: string, submission: Submission, key: 
             "repetitions" = v."repetitions", "lapses" = v."lapses", "dueAt" = v."dueAt", "lastReviewedAt" = ${now.toISOString()}::timestamp
           from (values ${sql.join(moves, sql`, `)})
             as v("kind", "refId", "stability", "difficulty", "intervalDays", "repetitions", "lapses", "dueAt", "wasDueAt", "wasLapses")
-          where k."userId" = ${userId} and k."kind" = v."kind" and k."refId" = v."refId"
+          where k."userId" = ${userId} and k."kind" = v."kind" and k."refId" = v."refId" and k."skill" = ${skill}
             and k."dueAt" = v."wasDueAt" and k."lapses" = v."wasLapses"
             and exists (select 1 from logged)
           returning 1

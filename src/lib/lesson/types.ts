@@ -48,8 +48,20 @@ export type Kind = "lexeme" | "pattern";
 export type Target = { kind: Kind; id: string };
 export const targetKey = (t: Target) => `${t.kind}:${t.id}`;
 
-/** One word or grammar point for one learner: its FSRS memory state (see src/lib/srs.ts) and when it is next due. */
-export type KnowledgeState = {
+/**
+ * Knowing a word by ear, knowing it on the page and being able to come up with
+ * it are three different things, and being good at one says little about the
+ * others. Each is scheduled on its own.
+ *
+ *   listening  the prompt is sound alone
+ *   reading    the prompt is Persian text alone
+ *   producing  the prompt is a meaning, and the answer is Persian
+ */
+export const SKILLS = ["listening", "reading", "producing"] as const;
+export type Skill = (typeof SKILLS)[number];
+
+/** One word or grammar point in one skill for one learner: its FSRS memory state (see src/lib/srs.ts) and when it is next due. */
+export type SkillState = {
   stability: number;
   difficulty: number;
   intervalDays: number;
@@ -60,6 +72,35 @@ export type KnowledgeState = {
   dueAt: Date;
   lastReviewedAt: Date | null;
 };
+
+/**
+ * One word or grammar point for one learner. The fields of its own are the
+ * weakest of its skills — the earliest due, the fewest right in a row, the
+ * hardest — so that "known" means known every way.
+ */
+export type KnowledgeState = SkillState & { skills: Record<Skill, SkillState> };
+
+/** A word or grammar point from the state of each of its skills. A skill not given is taken to be like the first that is. */
+export function knowledgeOf(skills: Partial<Record<Skill, SkillState>>): KnowledgeState {
+  const given = SKILLS.flatMap((skill) => skills[skill] ?? []);
+  if (given.length === 0) throw new Error("knowledge of something needs at least one skill");
+  const all = Object.fromEntries(SKILLS.map((skill) => [skill, skills[skill] ?? given[0]])) as Record<Skill, SkillState>;
+  const states = SKILLS.map((skill) => all[skill]);
+  const reviewed = states.flatMap((state) => state.lastReviewedAt ?? []);
+  return {
+    stability: Math.min(...states.map((state) => state.stability)),
+    difficulty: Math.max(...states.map((state) => state.difficulty)),
+    intervalDays: Math.min(...states.map((state) => state.intervalDays)),
+    repetitions: Math.min(...states.map((state) => state.repetitions)),
+    lapses: Math.max(...states.map((state) => state.lapses)),
+    dueAt: new Date(Math.min(...states.map((state) => state.dueAt.getTime()))),
+    lastReviewedAt: reviewed.length > 0 ? new Date(Math.max(...reviewed.map((at) => at.getTime()))) : null,
+    skills: all,
+  };
+}
+
+/** The same state in every skill. */
+export const evenly = (state: SkillState): KnowledgeState => knowledgeOf({ listening: state });
 
 // --- What the client receives. Every exercise is self-contained, so moving to
 // the next one needs no request. ---
@@ -111,26 +152,44 @@ export type IntroPatternExercise = {
   sentence: DisplaySentence;
 };
 
+/**
+ * Every kind of graded exercise, and the one skill each tests. The name is
+ * what the browser reports and what the answer log records.
+ */
+export const EXERCISE_SKILL = {
+  // Sound alone.
+  listen: "listening", // hear a sentence, pick its meaning
+  "hear-word": "listening", // hear a word, pick its meaning
+  // Persian text alone; no sound until answered.
+  read: "reading", // read a sentence, pick its meaning
+  "read-word": "reading", // read a word, pick its meaning
+  // A meaning, to be answered in Persian.
+  "pick-word": "producing", // see a meaning, pick the Persian word
+  cloze: "producing", // pick the word missing from a sentence
+  tiles: "producing", // build a sentence from its words
+} as const satisfies Record<string, Skill>;
+export type ExerciseName = keyof typeof EXERCISE_SKILL;
+
 export type ChoiceExercise = Graded & {
   type: "choice";
-  /**
-   * listen: hear the sentence, pick its meaning.  read: see it, pick its meaning.
-   * word: see one word, pick its meaning.  cloze: pick the missing word.
-   */
-  variant: "listen" | "read" | "word" | "cloze";
+  variant: Exclude<ExerciseName, TilesExercise["variant"]>;
   options: string[];
   answer: number;
-  /** word: the token shown.  cloze: the token blanked out. */
+  /** For an exercise about one word: where that word is in the sentence. */
   tokenIndex?: number;
   wordAudioUrl?: string;
 };
 
 export type TilesExercise = Graded & {
   type: "tiles";
+  variant: "tiles";
   tiles: { fa: string; voc: string; showVowels: boolean }[];
   /** Normalised word sequences that count as correct, the model answer first. */
   accepted: AcceptedAnswer[];
 };
+
+/** The name a graded exercise is reported and logged under. */
+export const exerciseName = (exercise: ChoiceExercise | TilesExercise): ExerciseName => exercise.variant;
 
 export type Exercise = IntroLexemeExercise | IntroPatternExercise | ChoiceExercise | TilesExercise;
 

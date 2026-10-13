@@ -4,15 +4,15 @@ import { buildTheme } from "../content/build.ts";
 import { SHOPPING } from "../content/shopping.ts";
 import { normalizeForCompare } from "../normalize.ts";
 import { applyAnswer, introducedState } from "./grade.ts";
-import { componentsOf, planSession, sentenceText } from "./plan.ts";
+import { componentsOf, dueTargets, planSession, sentenceText } from "./plan.ts";
 import { acceptedAnswers } from "./variants.ts";
-import { targetKey, type Exercise, type KnowledgeState } from "./types.ts";
+import { evenly, EXERCISE_SKILL, knowledgeOf, SKILLS, targetKey, type Exercise, type KnowledgeState } from "./types.ts";
 
 const content = buildTheme(SHOPPING);
 const NOW = new Date("2026-10-11T12:00:00Z");
 const DAY = 24 * 60 * 60 * 1000;
 
-const state = (repetitions: number, dueInDays: number): KnowledgeState => ({
+const state = (repetitions: number, dueInDays: number): KnowledgeState => evenly({
   intervalDays: 1,
   stability: 1,
   difficulty: 5,
@@ -44,11 +44,71 @@ test("first session introduces three things, one at a time, in ladder order", ()
   const intros = plan.exercises.filter((e) => e.type === "intro-lexeme").map((e) => e.target.id);
   assert.deepEqual(intros, ["havij", "darim", "ma"]);
   assert.deepEqual(types(plan.exercises), [
-    "intro-lexeme", "word", "listen",
-    "intro-lexeme", "word", "listen",
-    "intro-lexeme", "word", "listen",
-    "tiles", "tiles",
+    "intro-lexeme", "read-word", "listen",
+    "intro-lexeme", "read-word", "listen",
+    "intro-lexeme", "read-word", "listen",
+    // The first sentence is one word, so there is nothing to build: the word is picked instead.
+    "pick-word", "tiles", "tiles",
   ]);
+});
+
+test("by the end of its first session a new thing has been asked for in every skill", () => {
+  for (const known of [0, 4, 9, 15]) {
+    const knowledge = knowing(known, 1, 5);
+    const plan = planSession(content, knowledge, { now: NOW, seed: known + 3 });
+    const asked = new Map<string, Set<string>>();
+    for (const e of plan.exercises) {
+      if (e.type === "intro-lexeme" || e.type === "intro-pattern") asked.set(targetKey(e.target), new Set());
+      else if (e.primary && asked.has(targetKey(e.primary))) asked.get(targetKey(e.primary))!.add(EXERCISE_SKILL[e.variant]);
+    }
+    assert.ok(asked.size > 0);
+    for (const [key, skills] of asked) assert.deepEqual([...skills].sort(), [...SKILLS].sort(), key);
+  }
+});
+
+test("each skill falls due on its own, and a thing comes up in one skill before any comes up in two", () => {
+  const due = state(1, -1);
+  const later = state(1, 5);
+  const knowledge = new Map([
+    ["lexeme:havij", knowledgeOf({ listening: later, reading: due, producing: later })],
+    ["lexeme:darim", knowledgeOf({ listening: due, reading: due, producing: due })],
+    ["lexeme:ma", knowledgeOf({ listening: later, reading: later, producing: later })],
+  ]);
+  const all = dueTargets(knowledge, NOW, 10).map((d) => `${d.key}/${d.skill}`);
+  assert.equal(all.length, 4);
+  assert.ok(all.includes("lexeme:havij/reading"));
+  assert.ok(!all.some((d) => d.startsWith("lexeme:ma/")));
+  // Two things are due: with room for two, each gets one turn.
+  assert.deepEqual(new Set(dueTargets(knowledge, NOW, 2).map((d) => d.key)), new Set(["lexeme:havij", "lexeme:darim"]));
+});
+
+test("a review asks in the skill that is due, and in a way that tests only that skill", () => {
+  const due = state(1, -1);
+  const later = state(1, 5);
+  const keys = [...knowing(12, 1, 5).keys()];
+  for (const skill of SKILLS) {
+    const knowledge = new Map(keys.map((key) => [key, knowledgeOf({ listening: later, reading: later, producing: later, [skill]: due })]));
+    for (let seed = 1; seed <= 5; seed++) {
+      const plan = planSession(content, knowledge, { now: NOW, seed, maxNew: 0, maxReview: 20 });
+      assert.ok(plan.reviewCount > 0);
+      for (const e of plan.exercises) {
+        if ((e.type !== "choice" && e.type !== "tiles") || !e.primary) continue;
+        assert.equal(EXERCISE_SKILL[e.variant], skill, `${e.variant} in a ${skill} review`);
+      }
+    }
+  }
+});
+
+test("vowel marks fade with reading, not with listening or producing", () => {
+  const strong = state(5, 5);
+  const fresh = state(0, 5);
+  const keys = [...knowing(6, 1, 5).keys()];
+  const shown = (skills: Parameters<typeof knowledgeOf>[0]) => {
+    const plan = planSession(content, new Map(keys.map((key) => [key, knowledgeOf(skills)])), { now: NOW, seed: 2, maxNew: 0 });
+    return plan.exercises.flatMap((e) => e.sentence.tokens.map((t) => t.showVowels));
+  };
+  assert.ok(shown({ listening: strong, reading: fresh, producing: strong }).every(Boolean));
+  assert.ok(shown({ listening: fresh, reading: strong, producing: fresh }).every((marks) => !marks));
 });
 
 test("no exercise uses a word before it has been introduced", () => {
@@ -73,9 +133,9 @@ test("choice exercises have four distinct options with the right answer among th
     assert.equal(e.options.length, 4);
     assert.equal(new Set(e.options).size, 4);
     const expected =
-      e.variant === "word"
+      e.variant === "hear-word" || e.variant === "read-word"
         ? e.sentence.tokens[e.tokenIndex!].gloss
-        : e.variant === "cloze"
+        : e.variant === "cloze" || e.variant === "pick-word"
           ? e.sentence.tokens[e.tokenIndex!].fa
           : e.sentence.english;
     assert.equal(e.options[e.answer], expected);
@@ -95,7 +155,10 @@ test("due items are reviewed, capped, and only inside fully known sentences", ()
 
 test("mature items are practised by building the sentence", () => {
   const plan = planSession(content, knowing(12, 4, -1), { now: NOW, seed: 9, maxNew: 0 });
-  assert.ok(plan.exercises.filter((e) => e.type === "tiles").length >= plan.reviewCount - 1);
+  const producing = plan.exercises.filter((e) => (e.type === "choice" || e.type === "tiles") && EXERCISE_SKILL[e.variant] === "producing");
+  assert.ok(producing.length > 0);
+  // Bar a word whose only sentence is the word itself.
+  assert.ok(producing.filter((e) => e.type === "tiles").length >= producing.length - 1);
 });
 
 test("tiles accept the target sentence and same-meaning alternatives", () => {
