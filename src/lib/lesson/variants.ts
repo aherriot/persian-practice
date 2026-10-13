@@ -49,6 +49,9 @@ function pronounVariants(s: Sentence, lexemes: Map<string, Lexeme>): { words: Wo
   return variants;
 }
 
+/** A sentence's words exactly as spoken, for comparing with what a learner built from hearing it. */
+export const spokenWords = (sentence: Pick<Sentence, "tokens">) => normalizeForCompare(sentence.tokens.map((t) => t.fa).join(" "));
+
 /** Every word sequence that correctly answers "build this sentence" for `s`. The model answer comes first. */
 export function acceptedAnswers(s: Sentence, content: ThemeContent): AcceptedAnswer[] {
   const sameMeaning = [s, ...content.sentences.filter((o) => o !== s && o.english === s.english)];

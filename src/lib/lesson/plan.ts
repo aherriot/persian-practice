@@ -1,5 +1,6 @@
 import { audioUrl, clipSpec, wordClip, type ClipSpec } from "@/lib/audio-key";
-import { acceptedAnswers } from "./variants";
+import { otherReadings, soundDistance } from "./sounds";
+import { acceptedAnswers, spokenWords } from "./variants";
 import {
   SKILLS,
   targetKey,
@@ -42,6 +43,12 @@ export type PlanOptions = {
   confusions?: Map<string, string[]>;
   /** Sentences outside the content that may say the same thing as one inside it, in other words. */
   alternates?: Sentence[];
+  /**
+   * Words that cannot be said alone, whose own clip is a sentence they are in
+   * (و is "o" only between other words; see audio-store.ts). Never asked about
+   * by the sound of the word alone.
+   */
+  unspeakable?: Set<string>;
 };
 
 export type Distractor = { english: string; length: number };
@@ -209,6 +216,48 @@ export function planSession(
     };
   };
 
+  const saidAlone = (lexemeId: string) => !opts.unspeakable?.has(lexemeId);
+
+  /** The word is heard; the learner picks which written word it was, from ones that sound like it. */
+  const hearPick = (s: Sentence, lexemeId: string): ChoiceExercise => {
+    const lexeme = content.lexemes.get(lexemeId)!;
+    const pool = shuffle([...content.lexemes.values()]).filter((l) => l.fa !== lexeme.fa && l.translit !== lexeme.translit);
+    const mixedUp = new Set(confusedWith(lexemeId).map((l) => l.id));
+    // Words met before others: an unknown word is ruled out without listening.
+    const rank = (l: (typeof pool)[number]) =>
+      (mixedUp.has(l.id) ? -100 : 0) + (known.has(`lexeme:${l.id}`) ? 0 : 50) + soundDistance(lexeme.translit, l.translit);
+    const distractors = pool.sort((a, b) => rank(a) - rank(b)).map((l) => l.fa);
+    return {
+      type: "choice",
+      variant: "hear-pick",
+      key: nextKey("hear-pick"),
+      ...graded(s, { kind: "lexeme", id: lexemeId }),
+      ...withOptions(lexeme.fa, [...new Set(distractors)]),
+      tokenIndex: s.tokens.findIndex((t) => t.lexemeId === lexemeId),
+      wordAudioUrl: audioUrl(wordClip(lexeme)),
+    };
+  };
+
+  /**
+   * The word is shown as it is written, without vowel marks; the learner picks
+   * how it is said. Null where the letters leave no doubt, or too little to
+   * make a question of.
+   */
+  const pronounce = (s: Sentence, lexemeId: string): ChoiceExercise | null => {
+    const tokenIndex = s.tokens.findIndex((t) => t.lexemeId === lexemeId);
+    const correct = s.tokens[tokenIndex].translit;
+    const readings = shuffle(otherReadings(correct));
+    if (readings.length < 2) return null;
+    return {
+      type: "choice",
+      variant: "pronounce",
+      key: nextKey("pronounce"),
+      ...graded(s, { kind: "lexeme", id: lexemeId }),
+      ...withOptions(correct, readings),
+      tokenIndex,
+    };
+  };
+
   /** The meaning is shown; the learner picks the Persian word for it. */
   const pickWord = (s: Sentence, lexemeId: string): ChoiceExercise => {
     const lexeme = content.lexemes.get(lexemeId)!;
@@ -248,7 +297,7 @@ export function planSession(
     };
   };
 
-  const tiles = (s: Sentence, primary: Target | null): TilesExercise => {
+  const tiles = (s: Sentence, primary: Target | null, variant: TilesExercise["variant"] = "tiles"): TilesExercise => {
     const d = display(s);
     const inSentence = new Set(s.tokens.map((t) => t.fa));
     const extras = shuffle([...content.lexemes.values()])
@@ -257,11 +306,12 @@ export function planSession(
       .map((l) => ({ fa: l.fa, voc: l.voc, showVowels: showVowels(l.id) }));
     return {
       type: "tiles",
-      variant: "tiles",
-      key: nextKey("tiles"),
+      variant,
+      key: nextKey(variant),
       ...graded(s, primary),
       tiles: shuffle([...d.tokens.map((t) => ({ fa: t.fa, voc: t.voc, showVowels: t.showVowels })), ...extras]),
-      accepted: acceptedAnswers(s, withAlternates),
+      // Heard, a sentence is right only as it was said; from its meaning, any way of saying it is.
+      accepted: variant === "dictation" ? [{ text: spokenWords(s) }] : acceptedAnswers(s, withAlternates),
     };
   };
 
@@ -289,10 +339,21 @@ export function planSession(
     const word = kind === "lexeme";
     const reps = state.repetitions;
 
-    // A word is met alone first and then in a sentence, and each skill has its own way of asking.
-    if (skill === "listening") reviews.push(word && reps <= 1 && rand() < 0.5 ? wordChoice(s, id, "hear-word") : meaningChoice(s, target, "listen"));
-    else if (skill === "reading") reviews.push(word && reps <= 1 && rand() < 0.5 ? wordChoice(s, id, "read-word") : meaningChoice(s, target, "read"));
-    else if (word && (reps <= 1 || !multiWord)) reviews.push(pickWord(s, id));
+    // A word is met alone first and then in a sentence, each skill has its
+    // own ways of asking, and the ways get harder as the word settles.
+    const coin = rand() < 0.5;
+    if (skill === "listening") {
+      const alone = word && saidAlone(id);
+      if (alone && reps <= 1 && coin) reviews.push(wordChoice(s, id, "hear-word"));
+      else if (alone && reps === 2 && coin) reviews.push(hearPick(s, id));
+      else if (reps >= VOWEL_FADE_REPS && multiWord && coin) reviews.push(tiles(s, target, "dictation"));
+      else reviews.push(meaningChoice(s, target, "listen"));
+    } else if (skill === "reading") {
+      // Once its vowel marks are gone, whether the word can still be sounded out is worth asking.
+      const sounding = word && reps >= VOWEL_FADE_REPS && coin ? pronounce(s, id) : null;
+      if (sounding) reviews.push(sounding);
+      else reviews.push(word && reps <= 1 && coin ? wordChoice(s, id, "read-word") : meaningChoice(s, target, "read"));
+    } else if (word && (reps <= 1 || !multiWord)) reviews.push(pickWord(s, id));
     else if (word && reps === 2) reviews.push(cloze(s, id));
     else reviews.push(tiles(s, target));
   }

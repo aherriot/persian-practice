@@ -36,7 +36,7 @@ const CONFUSION_ROWS = 200;
 // words. "word" is what the meaning ones were logged as before reading and
 // listening were told apart.
 const BY_MEANING = ["word", "read-word", "hear-word"];
-const BY_SPELLING = ["cloze", "pick-word"];
+const BY_SPELLING = ["cloze", "pick-word", "hear-pick"];
 
 /**
  * The wrong answers a learner has picked in the exercises that are about

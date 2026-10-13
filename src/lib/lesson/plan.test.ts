@@ -130,14 +130,17 @@ test("choice exercises have four distinct options with the right answer among th
   const choices = plan.exercises.filter((e) => e.type === "choice");
   assert.ok(choices.length > 0);
   for (const e of choices) {
-    assert.equal(e.options.length, 4);
-    assert.equal(new Set(e.options).size, 4);
+    // A word with one vowel in doubt has only two other readings to offer.
+    assert.ok(e.options.length === 4 || (e.variant === "pronounce" && e.options.length === 3), `${e.variant}: ${e.options.join(", ")}`);
+    assert.equal(new Set(e.options).size, e.options.length);
     const expected =
       e.variant === "hear-word" || e.variant === "read-word"
         ? e.sentence.tokens[e.tokenIndex!].gloss
-        : e.variant === "cloze" || e.variant === "pick-word"
+        : e.variant === "cloze" || e.variant === "pick-word" || e.variant === "hear-pick"
           ? e.sentence.tokens[e.tokenIndex!].fa
-          : e.sentence.english;
+          : e.variant === "pronounce"
+            ? e.sentence.tokens[e.tokenIndex!].translit
+            : e.sentence.english;
     assert.equal(e.options[e.answer], expected);
   }
 });
@@ -280,4 +283,42 @@ test("a wrong answer lapses only the primary target, once", () => {
 test("ungraded practice and unknown targets change nothing", () => {
   assert.equal(applyAnswer(new Map(), null, [havij], false, NOW).size, 0);
   assert.equal(applyAnswer(new Map(), havij, [], true, NOW).size, 0);
+});
+
+test("a sentence that is only heard is right as it was said, and no other way", () => {
+  const knowledge = knowing(12, 4, -1);
+  let dictations = 0;
+  for (let seed = 1; seed <= 10; seed++) {
+    const plan = planSession(content, knowledge, { now: NOW, seed, maxNew: 0, maxReview: 30 });
+    for (const e of plan.exercises) {
+      if (e.type !== "tiles" || e.variant !== "dictation") continue;
+      dictations++;
+      assert.deepEqual(e.accepted, [{ text: normalizeForCompare(e.sentence.tokens.map((t) => t.fa).join(" ")) }]);
+      assert.ok(e.sentence.tokens.length >= 2);
+    }
+  }
+  assert.ok(dictations > 0);
+});
+
+test("a word that cannot be said alone is never asked about by its sound alone", () => {
+  const unspeakable = new Set(content.lexemes.keys());
+  for (const reps of [0, 1, 2, 4]) {
+    for (let seed = 1; seed <= 10; seed++) {
+      const plan = planSession(content, knowing(12, reps, -1), { now: NOW, seed, maxNew: 0, maxReview: 30, unspeakable });
+      assert.ok(!plan.exercises.some((e) => e.type === "choice" && (e.variant === "hear-word" || e.variant === "hear-pick")));
+    }
+  }
+});
+
+test("sounding out a word is asked once its vowel marks are gone, with the word shown bare", () => {
+  let asked = 0;
+  for (let seed = 1; seed <= 20; seed++) {
+    for (const reps of [1, 4]) {
+      const plan = planSession(content, knowing(12, reps, -1), { now: NOW, seed, maxNew: 0, maxReview: 30 });
+      const sounding = plan.exercises.filter((e) => e.type === "choice" && e.variant === "pronounce");
+      if (reps < 3) assert.equal(sounding.length, 0);
+      asked += sounding.length;
+    }
+  }
+  assert.ok(asked > 0);
 });

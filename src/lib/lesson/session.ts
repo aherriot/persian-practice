@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
+import { wordClip } from "@/lib/audio-key";
 import { db } from "@/lib/db";
-import { lexemes, patterns, reviewLog, sentences, themes } from "@/lib/db/schema";
+import { audioClips, lexemes, patterns, reviewLog, sentences, themes } from "@/lib/db/schema";
 import { confusedWith, summariseConfusions } from "./confusions";
 import { loadConfusions } from "./history";
 import { DEFAULT_MAX_NEW, DEFAULT_MAX_REVIEW, dueTargets, planSession, type PlanOptions } from "./plan";
@@ -54,7 +55,7 @@ const inTheme = (themeId: string) => {
  */
 export async function loadSession(
   userId: string,
-  opts: Omit<PlanOptions, "seen" | "distractors" | "alternates" | "confusions"> & Scope,
+  opts: Omit<PlanOptions, "seen" | "distractors" | "alternates" | "confusions" | "unspeakable"> & Scope,
 ): Promise<SessionPlan> {
   const { themeId, now, maxNew = DEFAULT_MAX_NEW, maxReview = DEFAULT_MAX_REVIEW } = opts;
   const scope = and(visibleSentence(userId), themeId ? inTheme(themeId) : undefined)!;
@@ -155,6 +156,15 @@ export async function loadSession(
   ]);
 
   const lexemeMap = new Map(lexemeRows.map((l) => [l.id, l]));
+  // Words whose own clip had to be a whole sentence: not to be asked about by ear alone.
+  const wordClips = new Map(lexemeRows.map((l) => [wordClip(l).hash, l.id]));
+  const carried =
+    wordClips.size === 0
+      ? []
+      : await db
+          .select({ hash: audioClips.hash })
+          .from(audioClips)
+          .where(and(inArray(audioClips.hash, [...wordClips.keys()]), isNotNull(audioClips.carrier)));
   return planSession(
     {
       sentences: chosen,
@@ -169,6 +179,7 @@ export async function loadSession(
       seen: new Map(poolRows.map((row) => [row.sentence.id, row.seen])),
       distractors,
       alternates,
+      unspeakable: new Set(carried.map((clip) => wordClips.get(clip.hash)!)),
       confusions: confusedWith(summariseConfusions(confusionRows, lexemeMap, known)),
     },
   );

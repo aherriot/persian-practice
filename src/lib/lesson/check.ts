@@ -1,7 +1,7 @@
 import { normalizeForCompare } from "@/lib/normalize";
 import { componentsOf } from "./plan";
 import { EXERCISE_SKILL, targetKey, type ExerciseName, type Sentence, type Target, type ThemeContent } from "./types";
-import { acceptedAnswers } from "./variants";
+import { acceptedAnswers, spokenWords } from "./variants";
 
 export const EXERCISES = Object.keys(EXERCISE_SKILL) as [ExerciseName, ...ExerciseName[]];
 
@@ -43,10 +43,14 @@ export function checkAnswer(sentence: Sentence, content: ThemeContent, submissio
   }
 
   let correct: boolean;
-  if (exercise === "tiles") {
+  if (exercise === "tiles" || exercise === "dictation") {
     if (!Array.isArray(answer)) return { ok: false, reason: "a built sentence is a list of words" };
     const built = normalizeForCompare(answer.join(" "));
-    correct = acceptedAnswers(sentence, content).some((accepted) => accepted.text === built);
+    correct =
+      exercise === "tiles"
+        ? acceptedAnswers(sentence, content).some((accepted) => accepted.text === built)
+        : // What was said, not another way of saying it.
+          built === spokenWords(sentence);
   } else if (Array.isArray(answer)) {
     return { ok: false, reason: "a choice is one option" };
   } else if (exercise === "listen" || exercise === "read") {
@@ -58,7 +62,8 @@ export function checkAnswer(sentence: Sentence, content: ThemeContent, submissio
     if (!lexeme || !token) return { ok: false, reason: "unknown word" };
     const same = (persian: string) => normalizeForCompare(answer) === normalizeForCompare(persian);
     if (exercise === "hear-word" || exercise === "read-word") correct = answer === lexeme.gloss;
-    else if (exercise === "pick-word") correct = same(lexeme.fa);
+    else if (exercise === "pick-word" || exercise === "hear-pick") correct = same(lexeme.fa);
+    else if (exercise === "pronounce") correct = answer === token.translit;
     else correct = same(token.fa);
   }
 
