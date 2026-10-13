@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildTheme, validateTheme } from "./build.ts";
-import { THEMES } from "./shopping.ts";
+import { buildTheme, validateCourse, validateTheme } from "./build.ts";
+import { P, W } from "./common.ts";
+import { PATTERNS, THEMES } from "./index.ts";
 import type { ThemeSeed } from "./types.ts";
 
 for (const theme of THEMES) {
@@ -13,6 +14,30 @@ for (const theme of THEMES) {
     assert.equal(buildTheme(theme).sentences[0].tokens.length, 1);
   });
 }
+
+test("the themes fit together as one course", () => {
+  assert.deepEqual(validateCourse(THEMES), []);
+});
+
+test("themes are listed in the order they are taught", () => {
+  const positions = THEMES.map((t) => t.position);
+  assert.deepEqual(positions, [...positions].sort((a, b) => a - b));
+});
+
+test("shared words and patterns are filed under their own ids", () => {
+  for (const [key, item] of [...Object.entries(W), ...Object.entries(P)]) assert.equal(item.id, key);
+});
+
+test("every shared word and pattern is used by a theme", () => {
+  const used = new Set(THEMES.flatMap((t) => [...t.lexemes, ...t.patterns]).map((item) => item.id));
+  assert.deepEqual([...Object.keys(W), ...Object.keys(P)].filter((id) => !used.has(id)), []);
+});
+
+test("PATTERNS lists each curated pattern once", () => {
+  const ids = PATTERNS.map((p) => p.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.deepEqual(new Set(ids), new Set(THEMES.flatMap((t) => t.patterns.map((p) => p.id))));
+});
 
 const base: ThemeSeed = {
   id: "t",
@@ -46,4 +71,44 @@ test("validateTheme rejects a vowelled form that spells a different word", () =>
 test("validateTheme reports unknown and unused lexemes", () => {
   assert.match(validateTheme({ ...base, sentences: [{ english: "x", tokens: ["zzz"] }] }).join("\n"), /unknown lexeme "zzz"/);
   assert.match(validateTheme({ ...base, sentences: [base.sentences[0]] }).join("\n"), /"b" is never used/);
+});
+
+test("validateTheme rejects a transliteration the audio listener could not check", () => {
+  const withTranslit = (translit: string) => validateTheme({ ...base, lexemes: [{ ...base.lexemes[0], translit }, base.lexemes[1]] });
+  assert.match(withTranslit("Sib").join("\n"), /not in the course's alphabet/);
+  assert.match(withTranslit("sīb").join("\n"), /not in the course's alphabet/);
+  assert.match(withTranslit("si b").join("\n"), /not the same number of words/);
+  assert.deepEqual(withTranslit("sib-e"), []);
+});
+
+const second: ThemeSeed = { ...base, id: "u", position: 1 };
+
+test("validateCourse accepts themes that share a word", () => {
+  const sentences = [{ english: "An apple!", tokens: ["a"], end: "!" as const }];
+  assert.deepEqual(validateCourse([base, { ...second, sentences }]), []);
+});
+
+test("validateCourse rejects a sentence another theme already has", () => {
+  assert.deepEqual(validateCourse([base, { ...second, sentences: [base.sentences[0]] }]), ["u-001 repeats t-001"]);
+});
+
+test("validateCourse rejects one id with two definitions", () => {
+  const lexemes = [{ ...base.lexemes[0], gloss: "apples" }, base.lexemes[1]];
+  const problems = validateCourse([base, { ...second, lexemes, sentences: [] }]);
+  assert.match(problems.join("\n"), /lexeme "a" is defined differently in t and u/);
+});
+
+test("validateCourse rejects two words with one spelling", () => {
+  const lexemes = [{ ...base.lexemes[0], id: "c", translit: "seyb", gloss: "slope" }];
+  const problems = validateCourse([base, { ...second, lexemes, sentences: [] }]);
+  assert.match(problems.join("\n"), /"a" and "c" are both spelled سیب/);
+});
+
+test("validateCourse rejects one English sentence for two Persian ones", () => {
+  const sentences = [{ english: "I have apples.", tokens: ["b", "a"] }];
+  assert.match(validateCourse([base, { ...second, sentences }]).join("\n"), /share the English "I have apples\." but not the Persian/);
+});
+
+test("validateCourse rejects two themes in one place", () => {
+  assert.match(validateCourse([base, { ...second, position: 0, sentences: [] }]).join("\n"), /two themes at position 0/);
 });
