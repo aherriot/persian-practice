@@ -87,7 +87,7 @@ export const SHOPPING: ThemeSeed = {
     { english: "I have bread.", tokens: ["nun", "daram"] },
     { english: "You have carrots.", tokens: ["havij", "dari"] },
     { english: "Do you have carrots?", tokens: ["havij", "dari"], end: "؟", patterns: ["question"] },
-    { english: "Yeah, I have carrots.", tokens: [{ lex: "are", after: "،" }, "havij", "daram"] },
+    { english: "Yeah, I have carrots.", answers: ["Do you have carrots?"], tokens: [{ lex: "are", after: "،" }, "havij", "daram"] },
     { english: "Do you have bread?", tokens: ["to", "nun", "dari"], end: "؟", patterns: ["question"] },
     {
       english: "I don't have carrots.",
@@ -95,7 +95,7 @@ export const SHOPPING: ThemeSeed = {
       patterns: ["negation"],
     },
     {
-      english: "No, we don't have bread.",
+      english: "No, we don't have bread.", answers: ["Do you have bread?"],
       tokens: [{ lex: "na", after: "،" }, "nun", { lex: "darim", fa: "نداریم", voc: "نَداریم", translit: "nadârim" }],
       patterns: ["negation"],
     },

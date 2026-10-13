@@ -167,6 +167,8 @@ export const sentences = pgTable(
     ladder: boolean("ladder").notNull().default(true),
     // Reported as wrong by a learner; never shown again.
     retired: boolean("retired").notNull().default(false),
+    // The sentences this one is a natural reply to ("How are you?" for "I'm well, thanks."), by id.
+    replyTo: text("replyTo").array().notNull().default([]),
     // The learner it was written for; null for curated sentences, which everyone shares.
     ownerId: text("ownerId").references(() => users.id, { onDelete: "cascade" }),
     createdAt: createdAt(),

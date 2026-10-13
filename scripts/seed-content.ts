@@ -76,7 +76,7 @@ async function main() {
       .onConflictDoUpdate({
         target: sentences.id,
         set: Object.fromEntries(
-          ["themeId", "position", "english", "note", "tokens", "endPunct", "lexemeIds", "patternIds"].map((c) => [
+          ["themeId", "position", "english", "note", "tokens", "endPunct", "lexemeIds", "patternIds", "replyTo"].map((c) => [
             c,
             excluded(c),
           ]),

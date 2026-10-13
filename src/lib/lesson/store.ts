@@ -224,12 +224,16 @@ export async function recordAnswer(userId: string, submission: Submission, key: 
   if (!sentence) return { ok: false, reason: "unknown sentence" };
 
   const building = submission.exercise === "tiles";
+  const replying = submission.exercise === "reply-heard" || submission.exercise === "reply-read";
   // Only the skill the exercise tested is moved by the answer.
   const skill = EXERCISE_SKILL[submission.exercise];
   const [alternates, lexemeRows, states] = await Promise.all([
     building
       ? db.select().from(sentences).where(and(sameMeaning(userId, [sentence.english]), ne(sentences.id, sentence.id)))
-      : [],
+      : replying
+        ? // What would do as a reply to it.
+          db.select().from(sentences).where(and(visibleSentence(userId), sql`${sentences.replyTo} @> ${textArray([sentence.id])}`))
+        : [],
     db
       .select()
       .from(lexemes)

@@ -201,3 +201,26 @@ test("something introduced is met in every skill, and as a whole stands where it
   // Still due, because reading and producing are.
   assert.ok(apple.dueAt <= NOW);
 });
+
+test("what is said back is marked against the sentences that answer what was heard", async () => {
+  const reply = (id: string, lexemeIds: string[], replyTo: string[]) =>
+    db.insert(sentences).values({
+      id,
+      themeId: null,
+      position: 0,
+      english: `english ${id}`,
+      tokens: lexemeIds.map((lexemeId) => ({ lexemeId, fa: `fa-${lexemeId}`, voc: `voc-${lexemeId}`, translit: lexemeId })),
+      endPunct: ".",
+      lexemeIds,
+      replyTo,
+    });
+  await reply("yes", ["pear"], [FRUIT]);
+  await reply("other", ["plum"], ["something-else"]);
+  const say = (answer: string): Submission => ({ sentenceId: FRUIT, exercise: "reply-heard", primary: { kind: "lexeme", id: "apple" }, answer });
+
+  assert.deepEqual(await recordAnswer(ME, say("fa-plum."), "k1", NOW), { ok: true, correct: false, duplicate: false });
+  assert.equal((await state("apple")).lapses, 1);
+  assert.deepEqual(await recordAnswer(ME, say("fa-pear."), "k2", new Date(NOW.getTime() + 60_000)), { ok: true, correct: true, duplicate: false });
+  // Reading was not what was tested.
+  assert.equal((await state("apple", "reading")).lapses, 0);
+});

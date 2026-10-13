@@ -29,6 +29,12 @@ export type SentenceSeed = {
   end?: "." | "؟" | "!";
   patterns?: string[];
   note?: string;
+  /**
+   * The English of sentences in this theme that this one is a natural reply
+   * to: "How are you?" on "I'm well, thanks.". Give every sentence that would
+   * do as a reply — one left out may be offered as a wrong answer.
+   */
+  answers?: string[];
 };
 
 export type ThemeSeed = {

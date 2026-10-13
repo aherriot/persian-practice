@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildTheme } from "../content/build.ts";
+import { GREETINGS } from "../content/greetings.ts";
 import { SHOPPING } from "../content/shopping.ts";
 import { normalizeForCompare } from "../normalize.ts";
 import { applyAnswer, introducedState } from "./grade.ts";
@@ -321,4 +322,68 @@ test("sounding out a word is asked once its vowel marks are gone, with the word 
     }
   }
   assert.ok(asked > 0);
+});
+
+test("a grammar point is practised by putting a word into the form it calls for", () => {
+  let asked = 0;
+  for (let seed = 1; seed <= 10; seed++) {
+    const plan = planSession(content, knowing(content.sentences.length, 1, -1), { now: NOW, seed, maxNew: 0, maxReview: 60 });
+    for (const e of plan.exercises) {
+      if (e.type !== "choice" || e.variant !== "transform") continue;
+      asked++;
+      const token = e.sentence.tokens[e.tokenIndex!];
+      const lexeme = content.lexemes.get(token.lexemeId)!;
+      assert.equal(e.primary?.kind, "pattern");
+      assert.ok(content.sentences.find((s) => s.id === e.sentence.id)!.patternIds.includes(e.primary!.id));
+      // The answer is the word as the hand-written sentence has it; the word given is its plain form.
+      assert.equal(e.options[e.answer], token.fa);
+      assert.equal(e.base?.fa, lexeme.fa);
+      assert.notEqual(token.fa, lexeme.fa);
+      assert.ok(e.options.includes(lexeme.fa));
+      assert.ok(e.instruction);
+      assert.equal(new Set(e.options).size, e.options.length);
+    }
+  }
+  assert.ok(asked > 0);
+});
+
+test("choosing what to say back offers one real reply, among replies to other things", () => {
+  const greetings = buildTheme(GREETINGS);
+  const keys = [...new Set(greetings.sentences.flatMap((s) => componentsOf(s).map(targetKey)))];
+  const knowledge = new Map(keys.map((key) => [key, state(2, -1)]));
+  const text = (s: (typeof greetings.sentences)[number]) => sentenceText(s);
+  const seen = new Set<string>();
+  for (let seed = 1; seed <= 30; seed++) {
+    const plan = planSession(greetings, knowledge, { now: NOW, seed, maxNew: 0, maxReview: 60 });
+    for (const e of plan.exercises) {
+      if (e.type !== "choice" || (e.variant !== "reply-heard" && e.variant !== "reply-read")) continue;
+      seen.add(e.variant);
+      const replies = new Set(greetings.sentences.filter((s) => s.replyTo?.includes(e.sentence.id)).map(text));
+      assert.ok(replies.has(e.options[e.answer]), `${e.sentence.english} -> ${e.options[e.answer]}`);
+      assert.equal(e.options.filter((option) => replies.has(option)).length, 1, `${e.sentence.english}: ${e.options.join(" | ")}`);
+      assert.ok(e.options.length >= 3);
+      assert.equal(e.reply && text(greetings.sentences.find((s) => s.id === e.reply!.id)!), e.options[e.answer]);
+      // "Are you well?" and "How are you?" take the same replies, so neither's replies are offered as wrong for the other.
+      if (e.sentence.english === "How are you?") assert.ok(!e.options.some((option) => option.includes("آره")));
+    }
+  }
+  assert.deepEqual([...seen].sort(), ["reply-heard", "reply-read"]);
+});
+
+test("nothing is offered as a reply that the learner could not yet read", () => {
+  const greetings = buildTheme(GREETINGS);
+  for (const known of [8, 14, 22, 30]) {
+    const knowledge = new Map(
+      [...new Set(greetings.sentences.slice(0, known).flatMap((s) => componentsOf(s).map(targetKey)))].map((key) => [key, state(2, -1)]),
+    );
+    const words = new Set([...knowledge.keys()].filter((key) => key.startsWith("lexeme:")).map((key) => greetings.lexemes.get(key.slice(7))!.fa));
+    for (let seed = 1; seed <= 10; seed++) {
+      const plan = planSession(greetings, knowledge, { now: NOW, seed, maxNew: 0, maxReview: 60 });
+      for (const e of plan.exercises) {
+        if (e.type !== "choice" || !e.reply) continue;
+        for (const token of e.reply.tokens) assert.ok(knowledge.has(`lexeme:${token.lexemeId}`), `${e.reply.english} uses ${token.fa}`);
+        assert.ok(words.size > 0);
+      }
+    }
+  }
 });

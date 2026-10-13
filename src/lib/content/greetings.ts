@@ -116,7 +116,7 @@ export const GREETINGS: ThemeSeed = {
     { english: "Hello.", tokens: ["salam"] },
     { english: "Good.", tokens: ["khub"] },
     {
-      english: "I'm well.",
+      english: "I'm well.", answers: ["How are you?", "Are you well?"],
       tokens: [{ lex: "khub", fa: "خوبم", voc: "خوبَم", translit: "khubam" }],
       patterns: ["am-are"],
     },
@@ -135,14 +135,14 @@ export const GREETINGS: ThemeSeed = {
     },
     { english: "Thank you.", tokens: ["mersi"] },
     {
-      english: "Thank you, I'm well.",
+      english: "Thank you, I'm well.", answers: ["How are you?", "Are you well?"],
       tokens: [{ lex: "mersi", after: "،" }, { lex: "khub", fa: "خوبم", voc: "خوبَم", translit: "khubam" }],
       patterns: ["am-are"],
     },
     { english: "How are you?", tokens: ["chetori"], end: "؟" },
     { english: "Hello, how are you?", tokens: [{ lex: "salam", after: "،" }, "chetori"], end: "؟" },
     {
-      english: "I'm well.",
+      english: "I'm well.", answers: ["How are you?", "Are you well?"],
       tokens: ["man", { lex: "khub", fa: "خوبم", voc: "خوبَم", translit: "khubam" }],
       patterns: ["am-are"],
       note: "من is optional: the ending of خوبم already says \"I\".",
@@ -154,20 +154,20 @@ export const GREETINGS: ThemeSeed = {
       patterns: ["am-are", "question"],
     },
     {
-      english: "I'm very well.",
+      english: "I'm very well.", answers: ["How are you?", "Are you well?"],
       tokens: ["kheyli", { lex: "khub", fa: "خوبم", voc: "خوبَم", translit: "khubam" }],
       patterns: ["am-are"],
     },
     { english: "Thanks a lot.", tokens: ["kheyli", "mamnun"] },
     {
-      english: "Yeah, I'm well.",
+      english: "Yeah, I'm well.", answers: ["Are you well?"],
       tokens: [{ lex: "are", after: "،" }, { lex: "khub", fa: "خوبم", voc: "خوبَم", translit: "khubam" }],
       patterns: ["am-are"],
     },
-    { english: "I'm not well.", tokens: ["khub", "nistam"] },
-    { english: "No, I'm not well.", tokens: [{ lex: "na", after: "،" }, "khub", "nistam"] },
+    { english: "I'm not well.", answers: ["How are you?", "Are you well?"], tokens: ["khub", "nistam"] },
+    { english: "No, I'm not well.", answers: ["Are you well?"], tokens: [{ lex: "na", after: "،" }, "khub", "nistam"] },
     {
-      english: "I'm Maryam.",
+      english: "I'm Maryam.", answers: ["What's your name?"],
       tokens: ["man", { lex: "maryam", fa: "مریمم", voc: "مَریَمَم", translit: "maryamam" }],
       patterns: ["am-are"],
     },
@@ -178,7 +178,7 @@ export const GREETINGS: ThemeSeed = {
       patterns: ["possessive-my"],
     },
     {
-      english: "My name is Maryam.",
+      english: "My name is Maryam.", answers: ["What's your name?"],
       tokens: [
         { lex: "esm", fa: "اسمم", voc: "اِسمَم", translit: "esmam" },
         { lex: "maryam", fa: "مریمه", voc: "مَریَمِه", translit: "maryame" },
@@ -193,7 +193,7 @@ export const GREETINGS: ThemeSeed = {
       patterns: ["possessive-your"],
     },
     {
-      english: "My name is Amir.",
+      english: "My name is Amir.", answers: ["What's your name?"],
       tokens: [
         { lex: "esm", fa: "اسمم", voc: "اِسمَم", translit: "esmam" },
         { lex: "amir", fa: "امیره", voc: "اَمیرِه", translit: "amire" },
@@ -206,7 +206,7 @@ export const GREETINGS: ThemeSeed = {
       patterns: ["copula"],
     },
     { english: "Pleased to meet you.", tokens: ["khoshbakhtam"] },
-    { english: "Pleased to meet you too.", tokens: ["man", "ham", "khoshbakhtam"] },
+    { english: "Pleased to meet you too.", answers: ["Pleased to meet you."], tokens: ["man", "ham", "khoshbakhtam"] },
     {
       english: "Are you well? (polite)",
       tokens: [{ lex: "khub", fa: "خوبین", voc: "خوبین", translit: "khubin" }],
@@ -227,7 +227,7 @@ export const GREETINGS: ThemeSeed = {
       patterns: ["are-polite", "question"],
     },
     { english: "Excuse me, sir.", tokens: ["bebakhshid", "agha"] },
-    { english: "You're welcome.", tokens: ["khahesh-mikonam"] },
+    { english: "You're welcome.", answers: ["Thank you.", "Thanks a lot."], tokens: ["khahesh-mikonam"] },
     { english: "Okay, thank you.", tokens: [{ lex: "bashe", after: "،" }, "mersi"] },
     { english: "Good morning.", tokens: ["sobh-bekheyr"] },
     { english: "Good night.", tokens: ["shab-bekheyr"] },

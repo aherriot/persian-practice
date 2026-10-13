@@ -124,9 +124,9 @@ export const FOOD: ThemeSeed = {
     { english: "I want a glass of water.", tokens: ["ye", "livan", "ab", "mikham"] },
     { english: "You want tea.", tokens: ["chayi", "mikhay"] },
     { english: "Do you want tea?", tokens: ["chayi", "mikhay"], end: "؟", patterns: ["question"] },
-    { english: "Yeah, I want tea.", tokens: [{ lex: "are", after: "،" }, "chayi", "mikham"] },
-    { english: "No, I want water.", tokens: [{ lex: "na", after: "،" }, "ab", "mikham"] },
-    { english: "No, thanks.", tokens: [{ lex: "na", after: "،" }, "mamnun"] },
+    { english: "Yeah, I want tea.", answers: ["Do you want tea?"], tokens: [{ lex: "are", after: "،" }, "chayi", "mikham"] },
+    { english: "No, I want water.", answers: ["Do you want tea?", "Do you want coffee?"], tokens: [{ lex: "na", after: "،" }, "ab", "mikham"] },
+    { english: "No, thanks.", answers: ["Do you want tea?", "Do you want coffee?", "Do you want sugar?", "Do you want fruit?"], tokens: [{ lex: "na", after: "،" }, "mamnun"] },
     {
       english: "I don't want tea.",
       tokens: ["chayi", { lex: "mikham", fa: "نمی‌خوام", voc: "نِمی‌خوام", translit: "nemikhâm" }],

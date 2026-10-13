@@ -25,6 +25,8 @@ export function buildTheme(seed: ThemeSeed): ThemeContent {
   );
   const patterns = new Map<string, Pattern>(seed.patterns.map((p) => [p.id, p]));
 
+  const said = (english: string) => seed.sentences.flatMap((s, index) => (s.english === english ? [sentenceId(seed.id, index)] : []));
+
   const sentences: Sentence[] = seed.sentences.map((s, index) => {
     const tokens = s.tokens.map((t) => {
       const spec = typeof t === "string" ? { lex: t } : t;
@@ -49,6 +51,7 @@ export function buildTheme(seed: ThemeSeed): ThemeContent {
       patternIds: s.patterns ?? [],
       generated: false,
       ladder: true,
+      replyTo: (s.answers ?? []).flatMap(said),
     };
   });
 
@@ -98,6 +101,10 @@ export function validateTheme(seed: ThemeSeed): string[] {
     }
     for (const id of s.patternIds) {
       if (!content.patterns.has(id)) problems.push(`${label}: unknown pattern "${id}"`);
+    }
+    for (const english of seed.sentences[index].answers ?? []) {
+      if (!seed.sentences.some((other) => other.english === english)) problems.push(`${label}: answers "${english}", which no sentence here says`);
+      if (english === s.english) problems.push(`${label}: answers itself`);
     }
     const components = [...s.lexemeIds.map((id) => `lexeme:${id}`), ...s.patternIds.map((id) => `pattern:${id}`)];
     const fresh = components.filter((c) => !seen.has(c));

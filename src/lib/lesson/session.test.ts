@@ -51,6 +51,7 @@ type SentenceOptions = {
   generated?: boolean;
   retired?: boolean;
   ownerId?: string | null;
+  replyTo?: string[];
 };
 
 async function addSentence(id: string, lexemeIds: string[], options: SentenceOptions = {}) {
@@ -412,4 +413,32 @@ test("a word whose clip is a whole sentence is not asked about by the sound of i
   // Apple could not be said alone: its clip is the sentence it is in.
   await db.insert(audioClips).values({ ...wordClip({ fa: "fa-apple", translit: "apple" }), status: "verified", carrier: "apple pear" });
   assert.deepEqual(await heardAlone(), ["pear"]);
+});
+
+test("replies to what is being reviewed are brought in, but only ones the learner can read", async () => {
+  await addCourse();
+  await know(ME, ["apple", "pear"], { repetitions: 2 });
+  await know(ME, ["tea", "plum"], { dueInDays: 5, repetitions: 2 });
+  // fruit-1 can be answered three ways; one uses a word not met yet. drinks-1 has replies of its own.
+  await addSentence("reply-a", ["pear"], { themeId: "fruit", position: 10, replyTo: ["fruit-1"] });
+  await addSentence("reply-b", ["plum", "pear"], { themeId: "fruit", position: 11, replyTo: ["fruit-1"] });
+  await addSentence("reply-c", ["fig"], { themeId: "fruit", position: 12, replyTo: ["fruit-1"] });
+  await addSentence("reply-d", ["tea"], { themeId: "drinks", position: 10, replyTo: ["drinks-1"] });
+  await addSentence("reply-e", ["tea", "tea"], { themeId: "drinks", position: 11, replyTo: ["drinks-1"] });
+
+  let asked = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    const plan = await loadSession(ME, { now: NOW, seed, maxNew: 0 });
+    for (const e of plan.exercises) {
+      if (e.type !== "choice" || e.variant !== "reply-heard") continue;
+      asked++;
+      assert.equal(e.sentence.id, "fruit-1");
+      assert.ok(["reply-a", "reply-b"].includes(e.reply!.id));
+      assert.ok(!shownText(plan).includes("fa-fig"));
+      // The wrong answers are what one says back to something else.
+      const wrong = e.options.filter((_, i) => i !== e.answer).sort();
+      assert.deepEqual(wrong, ["fa-tea fa-tea.", "fa-tea."]);
+    }
+  }
+  assert.ok(asked > 0);
 });

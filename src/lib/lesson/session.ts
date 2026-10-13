@@ -117,7 +117,17 @@ export async function loadSession(
       .limit(DISTRACTOR_SENTENCES),
   ]);
 
-  const chosen = [...ladderRows.map((row) => row.sentence), ...poolRows.map((row) => row.sentence)];
+  // Replies to the sentences up for review, where the learner knows every word
+  // of one: what "pick what to say back" is made from.
+  const poolIds = poolRows.map((row) => row.sentence.id);
+  const replyRows =
+    poolIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(sentences)
+          .where(and(scope, eligibleSentence(userId), sql`${sentences.replyTo} && ${textArray(poolIds)}`, notInArray(sentences.id, poolIds)));
+  const chosen = [...ladderRows.map((row) => row.sentence), ...poolRows.map((row) => row.sentence), ...replyRows];
   const chosenIds = chosen.map((s) => s.id);
   const usedLexemes = [...new Set(chosen.flatMap((s) => s.lexemeIds))];
   const meanings = [...new Set(chosen.map((s) => s.english))];
