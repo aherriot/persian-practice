@@ -17,6 +17,9 @@ export function AudioReviewProvider({ enabled, children }: { enabled: boolean; c
   return <ReviewContext value={enabled}>{children}</ReviewContext>;
 }
 
+/** Whether the person here may change what every learner shares. */
+export const useIsReviewer = () => useContext(ReviewContext);
+
 export type ReviewResult = {
   status: "verified" | "flagged" | null;
   approved: boolean;

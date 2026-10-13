@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button } from "@/components/Button";
+import { Correct } from "@/components/Correct";
 import { OrsiWindow } from "@/components/OrsiWindow";
 import { playAudio, preloadAudio, unlockAudio } from "@/lib/audio-client";
 import { lessonOutbox, type OutboxStatus } from "@/lib/lesson/outbox";
@@ -47,6 +48,9 @@ function describePlan(plan: SessionPlan): string {
   if (plan.reviewCount > 0) return `You will ${review}.`;
   return "Nothing is due for review, so this is a short practice round with sentences you already know.";
 }
+
+/** A session is planned whole before it starts, so a fix made part-way does not show in it. */
+const FIXED_LATER = "You will see it from your next session.";
 
 const NOTHING_UNSENT: OutboxStatus = { pending: 0, failing: false };
 /** How long "Another session" waits for the last answers to be saved before planning from what there is. */
@@ -229,6 +233,7 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
                 </p>
               )}
               {exercise.lexeme.note && <p className="max-w-sm text-sm text-ink/65">{exercise.lexeme.note}</p>}
+              <Correct subject={{ kind: "lexeme", id: exercise.lexeme.id }} own={exercise.lexeme.ownerId !== null} after={FIXED_LATER} />
             </div>
             <Example exercise={exercise} />
           </>
@@ -281,6 +286,9 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
                 </div>
               )}
               {exercise.sentence.generated && <ReportSentence key={exercise.key} sentenceId={exercise.sentence.id} />}
+              <div className="mt-2 flex">
+                <Correct subject={{ kind: "sentence", id: exercise.sentence.id }} own={exercise.sentence.generated} after={FIXED_LATER} />
+              </div>
             </div>
           )}
           {canContinue && (
@@ -357,15 +365,18 @@ function Eyebrow({ children }: { children: ReactNode }) {
 
 function Example({ exercise }: { exercise: Exercise }) {
   return (
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <Eyebrow>In a sentence</Eyebrow>
-        <SentenceView sentence={exercise.sentence} revealMeaning className="text-2xl" />
-        <p className="text-sm text-ink/70">{exercise.sentence.translit}</p>
-        <p className="text-sm font-medium text-ink">{exercise.sentence.english}</p>
-        {exercise.sentence.note && <p className="mt-1 text-xs text-ink/60">{exercise.sentence.note}</p>}
+    <div className="flex flex-col gap-2">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <Eyebrow>In a sentence</Eyebrow>
+          <SentenceView sentence={exercise.sentence} revealMeaning className="text-2xl" />
+          <p className="text-sm text-ink/70">{exercise.sentence.translit}</p>
+          <p className="text-sm font-medium text-ink">{exercise.sentence.english}</p>
+          {exercise.sentence.note && <p className="mt-1 text-xs text-ink/60">{exercise.sentence.note}</p>}
+        </div>
+        <SpeakButton url={exercise.sentence.audioUrl} label="Hear the sentence" />
       </div>
-      <SpeakButton url={exercise.sentence.audioUrl} label="Hear the sentence" />
+      <Correct subject={{ kind: "sentence", id: exercise.sentence.id }} own={exercise.sentence.generated} after={FIXED_LATER} />
     </div>
   );
 }
