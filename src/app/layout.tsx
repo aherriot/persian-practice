@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cinzel, Manrope, Vazirmatn, Noto_Kufi_Arabic } from "next/font/google";
 import { WallReliefPattern } from "@/components/WallReliefPattern";
 import "./globals.css";
@@ -40,8 +40,12 @@ const bodyFa = Vazirmatn({
 
 export const metadata: Metadata = {
   title: "Persian Practice",
-  description: "A conversational Persian tutor.",
+  description: "Short daily lessons in spoken Persian: one new word at a time, with spaced review.",
+  appleWebApp: { title: "Persian", statusBarStyle: "default" },
 };
+
+// The sand of the page, so a phone's status bar continues the wall.
+export const viewport: Viewport = { themeColor: "#ede3d2" };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
