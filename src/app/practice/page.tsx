@@ -19,7 +19,7 @@ export default async function PracticePage() {
   after(() => prepareNextSession(user.id));
   return (
     <AudioReviewProvider enabled={canReviewAudio(user.email)}>
-      <Session plan={plan} href="/practice" />
+      <Session plan={plan} href="/practice" userId={user.id} />
     </AudioReviewProvider>
   );
 }

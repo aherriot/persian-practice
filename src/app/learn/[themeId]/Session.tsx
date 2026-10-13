@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button } from "@/components/Button";
 import { OrsiWindow } from "@/components/OrsiWindow";
 import { playAudio, preloadAudio, unlockAudio } from "@/lib/audio-client";
+import { lessonOutbox, type OutboxStatus } from "@/lib/lesson/outbox";
 import type { ChoiceExercise, Exercise, SessionPlan, TilesExercise } from "@/lib/lesson/types";
 import { normalizeForCompare } from "@/lib/normalize";
 import { SentenceView, SpeakButton, shown } from "./Persian";
@@ -45,30 +46,38 @@ function describePlan(plan: SessionPlan): string {
   return "Nothing is due for review, so this is a short practice round with sentences you already know.";
 }
 
-// Answers are saved in the background, one at a time and in order, so an
-// introduction always lands before the first answer about the same word.
-let saving: Promise<unknown> = Promise.resolve();
-function save(body: unknown): void {
-  saving = saving
-    .then(() =>
-      fetch("/api/lesson/answer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        keepalive: true,
-      }),
-    )
-    .catch(() => {});
-}
+const NOTHING_UNSENT: OutboxStatus = { pending: 0, failing: false };
+/** How long "Another session" waits for the last answers to be saved before planning from what there is. */
+const SAVE_WAIT_MS = 4000;
 
 /** `href` is this session's own address, for starting another one. */
-export function Session({ plan, href }: { plan: SessionPlan; href: string }) {
+export function Session({ plan, href, userId }: { plan: SessionPlan; href: string; userId: string }) {
   const [queue, setQueue] = useState<Exercise[]>(plan.exercises);
   const [index, setIndex] = useState(-1); // -1 = start screen
   const [answered, setAnswered] = useState<boolean | null>(null);
   // Said alongside "Correct" when the answer was right but not the model answer.
   const [remark, setRemark] = useState<string | null>(null);
   const [score, setScore] = useState({ right: 0, total: 0 });
+  const [leaving, setLeaving] = useState(false);
+
+  // Answers are saved in the background, in order, and kept on this device
+  // until the server has them (src/lib/lesson/outbox.ts).
+  const save = useCallback((body: unknown) => lessonOutbox(userId).add(body), [userId]);
+  const unsent = useSyncExternalStore(
+    useCallback((listener: () => void) => lessonOutbox(userId).subscribe(listener), [userId]),
+    () => lessonOutbox(userId).status(),
+    () => NOTHING_UNSENT,
+  );
+
+  useEffect(() => {
+    // Anything an earlier page did not manage to send goes now, and again whenever the connection returns.
+    const flush = () => lessonOutbox(userId).flush();
+    flush();
+    window.addEventListener("online", flush);
+    return () => window.removeEventListener("online", flush);
+  }, [userId]);
+
+  const notice = unsent.failing ? <Unsaved count={unsent.pending} /> : null;
 
   const exercise = index >= 0 && index < queue.length ? queue[index] : null;
 
@@ -115,13 +124,13 @@ export function Session({ plan, href }: { plan: SessionPlan; href: string }) {
         void playAudio(exercise.sentence.audioUrl);
       }
     },
-    [exercise],
+    [exercise, save],
   );
 
   const acknowledge = useCallback(() => {
     if (exercise?.type === "intro-lexeme" || exercise?.type === "intro-pattern") save({ introduce: exercise.target });
     advance();
-  }, [exercise, advance]);
+  }, [exercise, advance, save]);
 
   const canContinue = exercise !== null && (exercise.type.startsWith("intro") || answered !== null);
 
@@ -158,7 +167,7 @@ export function Session({ plan, href }: { plan: SessionPlan; href: string }) {
 
   if (!exercise) {
     return (
-      <Shell>
+      <Shell notice={notice}>
         <div className="flex flex-1 flex-col items-center justify-center gap-6 text-center">
           <div className="w-56">
             <OrsiWindow id="session-complete" />
@@ -170,9 +179,21 @@ export function Session({ plan, href }: { plan: SessionPlan; href: string }) {
             {plan.newCount > 0 && `you met ${newThings(plan)}`}
           </p>
           <div className="flex items-center gap-6">
-            {/* A full page load, so the server plans the next session from the saved answers. */}
-            <a href={href} className="text-sm font-medium text-cobalt underline">
-              Another session
+            {/* A full page load, so the server plans the next session from the saved answers: wait for the last of them. */}
+            <a
+              href={href}
+              aria-disabled={leaving}
+              className="text-sm font-medium text-cobalt underline aria-disabled:opacity-60"
+              onClick={(event) => {
+                event.preventDefault();
+                if (leaving) return;
+                setLeaving(true);
+                void lessonOutbox(userId)
+                  .drained(SAVE_WAIT_MS)
+                  .then(() => window.location.assign(href));
+              }}
+            >
+              {leaving ? "Saving…" : "Another session"}
             </a>
             <Link href="/dashboard" className="text-sm text-ink/60 underline">
               Done for now
@@ -184,7 +205,7 @@ export function Session({ plan, href }: { plan: SessionPlan; href: string }) {
   }
 
   return (
-    <Shell progress={index / queue.length}>
+    <Shell progress={index / queue.length} notice={notice}>
       <div key={exercise.key} className="flex flex-1 flex-col gap-6">
         {exercise.type === "intro-lexeme" && (
           <>
@@ -281,7 +302,17 @@ function ReportSentence({ sentenceId }: { sentenceId: string }) {
   );
 }
 
-function Shell({ progress, children }: { progress?: number; children: ReactNode }) {
+/** Shown only once saving has failed more than once; a single dropped request sorts itself out unseen. */
+function Unsaved({ count }: { count: number }) {
+  return (
+    <p role="status" className="rounded-md border border-gold/50 bg-gold/10 px-3 py-2 text-xs text-ink/70">
+      {count === 1 ? "Your last answer has" : `Your last ${count} answers have`} not been saved yet. Carry on: they are
+      kept on this device and will be sent when the connection is back.
+    </p>
+  );
+}
+
+function Shell({ progress, notice, children }: { progress?: number; notice?: ReactNode; children: ReactNode }) {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-6 bg-paper px-5 py-6">
       {progress !== undefined && (
@@ -300,6 +331,7 @@ function Shell({ progress, children }: { progress?: number; children: ReactNode 
           </div>
         </div>
       )}
+      {notice}
       {children}
     </main>
   );

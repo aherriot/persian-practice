@@ -213,6 +213,9 @@ export const reviewLog = pgTable(
     target: text("target"),
     // The wrong answer given: the option picked, or the words built in order. Null when right.
     picked: text("picked"),
+    // Made up by the browser, one per answer, and sent again with every retry:
+    // an answer that arrives twice is recorded once. Null on rows from before this.
+    key: text("key").unique(),
     createdAt: createdAt(),
   },
   (t) => [

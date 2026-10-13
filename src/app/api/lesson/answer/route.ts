@@ -5,10 +5,15 @@ import { introduce, recordAnswer } from "@/lib/lesson/store";
 
 const Target = z.object({ kind: z.enum(["lexeme", "pattern"]), id: z.string().min(1).max(100) });
 
+// Sent by the browser's outbox with everything, and again with each retry (src/lib/lesson/outbox.ts).
+const Key = z.string().min(8).max(64);
+
 const Body = z.union([
+  // Needs no key to be safe to repeat: a second introduction changes nothing.
   z.object({ introduce: Target }),
   // What the learner did, not how it went: the answer is marked here (src/lib/lesson/check.ts).
   z.object({
+    key: Key,
     sentenceId: z.string().min(1).max(100),
     exercise: z.enum(EXERCISES),
     primary: Target.nullable(),
@@ -28,7 +33,8 @@ export async function POST(request: Request): Promise<Response> {
     await introduce(userId, body.data.introduce);
     return Response.json({ ok: true });
   }
-  const result = await recordAnswer(userId, body.data);
+  const { key, ...submission } = body.data;
+  const result = await recordAnswer(userId, submission, key);
   if (!result.ok) return Response.json({ error: result.reason }, { status: 400 });
   return Response.json(result);
 }

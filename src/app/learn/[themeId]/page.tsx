@@ -19,7 +19,7 @@ export default async function LearnPage({ params }: { params: Promise<{ themeId:
   after(() => prepareNextSession(user.id));
   return (
     <AudioReviewProvider enabled={canReviewAudio(user.email)}>
-      <Session plan={plan} href={`/learn/${themeId}`} />
+      <Session plan={plan} href={`/learn/${themeId}`} userId={user.id} />
     </AudioReviewProvider>
   );
 }
