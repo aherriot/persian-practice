@@ -283,6 +283,29 @@ export const audioReviews = pgTable(
   (t) => [index().on(t.hash)],
 );
 
+// A change a person made to a word or a sentence from inside the app, by
+// describing what was wrong (src/lib/lesson/correct.ts). The row itself has
+// already been changed; this is the record of it, and what `npm run db:seed`
+// replays so that seeding the curated content again does not undo the fix.
+export type CorrectionChanges = Record<string, { from: unknown; to: unknown }>;
+
+export const corrections = pgTable(
+  "Correction",
+  {
+    id: id(),
+    kind: text("kind").$type<"lexeme" | "sentence">().notNull(),
+    refId: text("refId").notNull(),
+    // What the person wrote, and the one-line account of the fix they agreed to.
+    request: text("request").notNull(),
+    summary: text("summary").notNull(),
+    // Each field that changed, as it was and as it is now.
+    changes: jsonb("changes").$type<CorrectionChanges>().notNull(),
+    userId: text("userId").references(() => users.id, { onDelete: "set null" }),
+    createdAt: createdAt(),
+  },
+  (t) => [index().on(t.kind, t.refId)],
+);
+
 // --- Background work ---
 //
 // Slow work done for a learner outside any request: writing new sentences and
