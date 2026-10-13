@@ -121,6 +121,7 @@ src/lib/
     generate.ts        more practice sentences from words already known
     expand.ts          new words and grammar once the curated course runs out
     prepare.ts         that writing as a job, one resumable step at a time
+    correct.ts         fixes a word or sentence from a description of what is wrong
   jobs/queue.ts      the job queue: leases, retries, a worker that can be cut off
   audio-store.ts     synthesise, listen, retry; human approvals pin a clip
   audio-verify.ts    the automated listener
@@ -156,6 +157,18 @@ from call to call. Every clip is checked against the transliteration the content
 already carries, retried until it passes, and can be approved or rejected by a
 person, whose verdict nothing automated overrides
 ([`FINDINGS`](spike/FINDINGS.md) §13–15).
+
+**Content can be fixed from where it is seen.** Under a word in the reference,
+and under a word or sentence in a lesson, "Something wrong?" takes a complaint in
+plain words — a recording that says *va* for *o*, a translation that is off, a
+spelling. The language model turns it into the smallest change that answers it,
+the person reads that and agrees, and only then is it made: a word's new spelling
+is carried into every sentence it is in, text that changed gets new recordings,
+and a recording that misreads sound text is rejected and made again. A fix that
+would leave the course unsound is refused. Reviewers (`AUDIO_REVIEWER_EMAILS`)
+can change what everyone shares; anyone can change what was written for them.
+Each fix is recorded, and `npm run db:seed` puts them back on top of the curated
+content, so seeding again does not undo one.
 
 The provider abstraction exists from the first commit rather than "eventually,"
 because voice quality was the axis most likely to force a vendor switch — and it

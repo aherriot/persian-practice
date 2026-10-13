@@ -4,17 +4,22 @@
  * failing that on first play).
  * Idempotent; refuses to write a theme that fails validation.
  *
+ * Fixes made from inside the app ("Something wrong?") are kept: each is put
+ * back on top of what the code says, unless the code has since been changed in
+ * the same place, in which case the code wins and the fix is listed.
+ *
  * Usage: npm run db:seed
  */
 import "./load-env.ts";
 
-import { sql } from "drizzle-orm";
+import { asc, sql } from "drizzle-orm";
 import { wordClip } from "../src/lib/audio-key.ts";
 import { registerClips } from "../src/lib/audio-store.ts";
 import { buildTheme, validateCourse, validateTheme } from "../src/lib/content/build.ts";
 import { PATTERNS, THEMES } from "../src/lib/content/index.ts";
 import { db } from "../src/lib/db/index.ts";
-import { lexemes, patterns, sentences, themes } from "../src/lib/db/schema.ts";
+import { corrections, lexemes, patterns, sentences, themes } from "../src/lib/db/schema.ts";
+import { replay } from "../src/lib/lesson/corrections.ts";
 import { GRAMMAR_SPINE } from "../src/lib/lesson/forms.ts";
 import { sentenceClip } from "../src/lib/lesson/plan.ts";
 
@@ -34,6 +39,8 @@ async function main() {
       set: Object.fromEntries(["title", "summary", "position"].map((c) => [c, excluded(c)])),
     });
 
+  const fixes = await db.select().from(corrections).orderBy(asc(corrections.createdAt));
+
   for (const seed of THEMES) {
     const problems = validateTheme(seed);
     if (problems.length > 0) {
@@ -41,7 +48,9 @@ async function main() {
       process.exitCode = 1;
       continue;
     }
-    const content = buildTheme(seed);
+    const built = buildTheme(seed);
+    const fixed = replay(built, fixes);
+    const content = { ...built, lexemes: fixed.lexemes, sentences: fixed.sentences };
     const { id, title, titleFa, description, position } = seed;
 
     await db
@@ -89,8 +98,12 @@ async function main() {
     ]);
 
     console.log(
-      `${id}: ${content.sentences.length} sentences, ${content.lexemes.size} words, ${content.patterns.size} patterns`,
+      `${id}: ${content.sentences.length} sentences, ${content.lexemes.size} words, ${content.patterns.size} patterns` +
+        (fixed.applied > 0 ? `, ${fixed.applied} fixes made in the app kept` : ""),
     );
+    for (const fix of fixed.skipped) {
+      console.warn(`  not kept, the code has changed since: ${fix.kind} ${fix.refId} — ${Object.keys(fix.changes).join(", ")}`);
+    }
   }
 }
 
