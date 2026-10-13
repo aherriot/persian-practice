@@ -2,6 +2,7 @@
 // VerificationToken via @auth/drizzle-adapter — those four follow the adapter's
 // canonical column shape (see ../../../../readtrip/lib/db/schema.ts, the
 // pattern this file replicates). Everything else is app-owned.
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -13,6 +14,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { AdapterAccountType } from "next-auth/adapters";
 import type { Person } from "@/lib/lesson/types";
@@ -269,4 +271,43 @@ export const audioReviews = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index().on(t.hash)],
+);
+
+// --- Background work ---
+//
+// Slow work done for a learner outside any request: writing new sentences and
+// making their audio (src/lib/lesson/background.ts). A job is done in small
+// steps, and `state` is saved after each, so a worker that is cut off loses
+// one step and the next worker carries on from there (src/lib/jobs/queue.ts).
+
+export type JobKind = "session" | "word";
+
+export const jobs = pgTable(
+  "Job",
+  {
+    id: id(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<JobKind>().notNull(),
+    // What the job is about. Only one unfinished job may have a given key, so
+    // asking twice for the same work queues it once.
+    key: text("key").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+    // How far the job has got; null until its first step is done.
+    state: jsonb("state").$type<unknown>(),
+    status: text("status").$type<"pending" | "done" | "failed">().notNull().default("pending"),
+    // Steps started in a row without one finishing. Reset by every finished step.
+    attempts: integer("attempts").notNull().default(0),
+    // Not before this: pushed into the future after a failure.
+    runAfter: timestampDefaultNow("runAfter"),
+    // The worker holding the job, and until when. A lease that has run out is
+    // anyone's to take: its worker was cut off.
+    leaseId: text("leaseId"),
+    leaseUntil: timestamp("leaseUntil", { precision: 3 }),
+    lastError: text("lastError"),
+    createdAt: createdAt(),
+    finishedAt: timestamp("finishedAt", { precision: 3 }),
+  },
+  (t) => [uniqueIndex().on(t.key).where(sql`"status" = 'pending'`), index().on(t.status, t.runAfter)],
 );
