@@ -1,12 +1,14 @@
 # Persian Practice
 
-A conversational Farsi tutor: you speak, it speaks back, and it teaches you to
-hold a conversation rather than to recognise flashcards.
+A tutor for spoken Persian — the colloquial Tehrani people actually say, not the
+literary form they write. Short lessons introduce one word or piece of grammar at
+a time, inside sentences made only of what you already know, and bring each one
+back on a spaced schedule. Every sentence is spoken aloud.
 
 The interesting part is not the app. It is that spoken Persian breaks most of the
 assumptions a voice pipeline is built on, and almost none of those breakages are
-visible until you measure them. This repository is currently the record of that
-measurement.
+visible until you measure them. This repository is the record of that
+measurement, and the app built on what it found.
 
 ---
 
@@ -73,6 +75,7 @@ that produced them in [`spike/`](spike/).
 | **Text-to-speech** | `gpt-4o-mini-tts`, voice `nova`                                        |
 | **Speech-to-text** | `gpt-4o-transcribe`, verbatim prompt mandatory                         |
 | **Register**       | Colloquial Tehrani, driven by the generated text rather than the voice |
+| **Lesson audio**   | Made ahead of time, checked by an automated listener, open to review   |
 
 Three results worth stating on their own:
 
@@ -98,17 +101,54 @@ ceiling rather than a bug.
 ## Architecture
 
 Next.js (App Router) and TypeScript, one process. Route handlers keep API keys
-server-side; there is no separate backend.
+server-side; there is no separate backend. Postgres (Neon) through Drizzle,
+Auth.js magic-link sign-in, and a private Vercel Blob store for audio.
 
 ```
+src/app/
+  dashboard/  learn/[themeId]/  practice/    themes, a themed session, practise everything
+  progress/   reference/        review/      where you stand, the dictionary, audio review
+  api/                                       answers, audio, own words, speech
 src/lib/
+  content/           the hand-written themes, validated before they are seeded
+  lesson/            the lesson engine
+    plan.ts            plans a whole session up front — pure, seeded, no I/O
+    session.ts         the queries that fetch only what a plan could use
+    grade.ts           what one answer does to the schedule
+    variants.ts        the other word orders that are also correct
+    author.ts          the LLM as content author, ahead of time only
+    assemble.ts        builds a sentence from the author's draft, or rejects it
+    generate.ts        more practice sentences from words already known
+    expand.ts          new words and grammar once the curated course runs out
+  audio-store.ts     synthesise, listen, retry; human approvals pin a clip
+  audio-verify.ts    the automated listener
   tts-provider.ts    provider interface + OpenAI and Azure implementations
   stt-provider.ts    transcription arms, including the verbatim prompt
   normalize.ts       Persian Unicode folding, tokenisation, word error rate
-  throttle.ts        request pacing; per-minute vs per-day limit classification
+  report-error.ts    the one place unexpected errors are reported from
 spike/               the experiments, kept runnable
-docs/PHASE-1.md      the build plan
+research/            the parked conversation tutor
+docs/PHASE-1.md      the build plan for that tutor
 ```
+
+**Lessons are deterministic.** A session is planned in full when the page is
+requested, so nothing is generated and no model is called while a learner is
+answering. New material comes off a ladder in order; a review is always set in a
+sentence made entirely of words the learner has met; short-vowel marks fade from
+a word once it has survived a few reviews.
+
+**The language model writes content, never judges an answer.** When a learner
+runs low on sentences or on new material, it drafts more — as word ids and form
+names, never spellings. Each draft is assembled mechanically, checked by a second
+call, given verified audio, and dropped if it fails any step. A learner can still
+remove a generated sentence that sounds wrong.
+
+**No clip is trusted because a prompt asked nicely.** The speech model chooses
+its own reading wherever the spelling leaves one open, and chooses differently
+from call to call. Every clip is checked against the transliteration the content
+already carries, retried until it passes, and can be approved or rejected by a
+person, whose verdict nothing automated overrides
+([`FINDINGS`](spike/FINDINGS.md) §13–15).
 
 The provider abstraction exists from the first commit rather than "eventually,"
 because voice quality was the axis most likely to force a vendor switch — and it
@@ -124,9 +164,22 @@ call identical compare as different.
 ## Running it
 
 ```bash
-cp .env.example .env.local     # OPENAI_API_KEY
+cp .env.example .env.local     # what each variable is for is explained there
 npm install
 npm run spike:check            # verifies credentials, diagnoses failures
+npm run db:migrate             # create the tables
+npm run db:seed                # load the hand-written themes
+npm run db:audio               # synthesise and verify their audio
+npm run dev
+```
+
+Locally no email is needed to sign in: the link is printed to the server console,
+and a dev sign-in form is shown. Audio that `db:audio` has not made yet is made
+on first play.
+
+```bash
+npm run db:sentences -- you@example.com     # run the sentence author once and see what it kept
+npm run db:expand -- you@example.com        # dry run of what would be taught next
 ```
 
 The experiments are kept runnable rather than deleted, so they can be re-run when
@@ -148,6 +201,14 @@ most have no bidirectional text support, so right-to-left text appears reversed.
 npm run typecheck && npm test && npm run lint
 ```
 
+The tests need no database or API key. The ones for the session queries run
+against PGlite, a Postgres in the test process, with the real migrations applied.
+In a fresh checkout run `npx next typegen` first; the typecheck needs the route
+types it writes. CI runs all of this, and a build, on every push.
+
+`npm run build` migrates the database before building. That is what a deploy
+wants and not what a local check wants: use `npx next build` for that.
+
 ---
 
 ## Status
@@ -156,18 +217,19 @@ Phase 0 — feasibility — is complete and passed on both gates: a voice good e
 to teach pronunciation with, and transcripts that preserve learner errors well
 enough to teach from.
 
-Phase 1 builds the conversation loop and measures whether it feels like a
-conversation. The plan is in [`docs/PHASE-1.md`](docs/PHASE-1.md), including the
-browser-audio findings, prompts, and the known ceilings.
-
-Phase 1 was built as a free, topic-driven conversation with an LLM tutor, plus a
-placement test and flashcard review. That teaching approach has been parked in
+Phase 1 built the conversation loop and measured whether it felt like a
+conversation: a free, topic-driven conversation with an LLM tutor, plus a
+placement test and flashcard review. The plan is in
+[`docs/PHASE-1.md`](docs/PHASE-1.md), including the browser-audio findings,
+prompts, and the known ceilings. That teaching approach has been parked in
 [`research/conversation-v1/`](research/conversation-v1/README.md) — frozen, not
 compiled, kept for reference.
 
-The app is now being rebuilt around a deterministic lesson engine: very simple
-themed conversations, one new word at a time, quizzes on words, phrases and
-grammar, spaced repetition, and a built-in reference. Accounts, the database,
-the TTS/STT stack, the SM-2 engine and the design system carry over.
+The app is now a deterministic lesson engine: themed lessons, one new word at a
+time, exercises on words, sentences and grammar, spaced repetition, a progress
+page, and a built-in reference a learner can add their own words to. When the
+hand-written course runs out, the app writes more.
 
-claude --resume 0bdb8cb5-6b83-441b-b73c-16bef8b4d5b5
+Speaking is the gap. The recorder and the transcription route from Phase 1 are
+still here and measured, but no lesson exercise uses them yet: lessons are
+listening, reading and building sentences from tiles.
