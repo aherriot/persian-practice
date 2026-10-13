@@ -120,6 +120,8 @@ src/lib/
     assemble.ts        builds a sentence from the author's draft, or rejects it
     generate.ts        more practice sentences from words already known
     expand.ts          new words and grammar once the curated course runs out
+    prepare.ts         that writing as a job, one resumable step at a time
+  jobs/queue.ts      the job queue: leases, retries, a worker that can be cut off
   audio-store.ts     synthesise, listen, retry; human approvals pin a clip
   audio-verify.ts    the automated listener
   tts-provider.ts    provider interface + OpenAI and Azure implementations
@@ -142,6 +144,11 @@ runs low on sentences or on new material, it drafts more — as word ids and for
 names, never spellings. Each draft is assembled mechanically, checked by a second
 call, given verified audio, and dropped if it fails any step. A learner can still
 remove a generated sentence that sounds wrong.
+
+**Writing content is a queued job, not part of a request.** Loading a session
+queues the work and nudges a worker route with its own time limit. The job saves
+after every step — the draft, the review, then each sentence's audio — so a worker
+that is cut off loses one step and the next one carries on from there.
 
 **No clip is trusted because a prompt asked nicely.** The speech model chooses
 its own reading wherever the spelling leaves one open, and chooses differently

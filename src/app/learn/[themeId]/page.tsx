@@ -15,7 +15,7 @@ export default async function LearnPage({ params }: { params: Promise<{ themeId:
 
   const now = new Date();
   const plan = await loadSession(user.id, { themeId, now, seed: now.getTime() % 2 ** 31 });
-  // Written after the page is sent, so the next session has fresh material waiting.
+  // Queued once the page is sent, and written by a worker, so the next session has fresh material waiting.
   after(() => prepareNextSession(user.id));
   return (
     <AudioReviewProvider enabled={canReviewAudio(user.email)}>
