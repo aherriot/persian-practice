@@ -5,6 +5,8 @@ import { signOut } from "@/lib/auth";
 import { HISTORY_DAYS, loadActivityHours } from "@/lib/lesson/history";
 import { loadKnowledge, themeSummaries } from "@/lib/lesson/store";
 import { weakTargets } from "@/lib/lesson/weak";
+import { loadReminderSetting } from "@/lib/reminders";
+import { Reminders } from "./Reminders";
 import { actionClass } from "./styles";
 import { Today } from "./Today";
 
@@ -12,7 +14,11 @@ export default async function DashboardPage() {
   const user = await requireUser();
   const now = new Date();
   // Counted from what the learner has met rather than added up over themes, which share words.
-  const [knowledge, hours] = await Promise.all([loadKnowledge(user.id), loadActivityHours(user.id, now)]);
+  const [knowledge, hours, reminders] = await Promise.all([
+    loadKnowledge(user.id),
+    loadActivityHours(user.id, now),
+    loadReminderSetting(user.id),
+  ]);
   const themes = await themeSummaries(user.id, now, knowledge);
   const due = [...knowledge.values()].filter((state) => state.dueAt <= now).length;
   const weak = weakTargets(knowledge).length;
@@ -47,6 +53,7 @@ export default async function DashboardPage() {
             Look up a word or grammar note
           </Link>
         </div>
+        {user.email && <Reminders enabled={reminders} email={user.email} />}
       </Today>
 
       <section className="flex flex-col gap-4">
