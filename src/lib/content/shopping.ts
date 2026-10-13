@@ -14,7 +14,7 @@ export const SHOPPING: ThemeSeed = {
   title: "Shopping",
   titleFa: "خرید",
   description: "Fruit, vegetables and bread: saying what you have, what you want, and asking the price.",
-  position: 0,
+  position: 1,
   lexemes: [
     { id: "havij", fa: "هویج", voc: "هَویج", translit: "havij", gloss: "carrot" },
     W.darim,
