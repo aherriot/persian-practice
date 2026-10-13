@@ -7,7 +7,10 @@
 const blobs = new Map<string, Promise<string>>();
 let element: HTMLAudioElement | null = null;
 
-const SILENCE = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=";
+// A twentieth of a second of silence (8-bit mono WAV, every sample at the
+// midpoint). It has to have samples in it: Firefox refuses a WAV with a header
+// and no audio as undecodable, and logs it.
+const SILENCE = `data:audio/wav;base64,UklGRrQBAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YZABAACA${"gICA".repeat(133)}`;
 
 export function preloadAudio(url: string, cache: RequestCache = "default"): Promise<string> {
   let pending = blobs.get(url);
