@@ -91,7 +91,7 @@ test("generated sentences are practised but never used to introduce something ne
   assert.ok(!fresh.exercises.some((e) => "sentence" in e && e.sentence.id === "gen-test"));
 
   // Once its words are known and due, the least-seen sentence is preferred for review.
-  const state: KnowledgeState = { intervalDays: 1, easeFactor: 2.5, repetitions: 1, lapses: 0, dueAt: new Date("2025-12-31") };
+  const state: KnowledgeState = { stability: 1, difficulty: 5, intervalDays: 1, repetitions: 1, lapses: 0, dueAt: new Date("2025-12-31"), lastReviewedAt: null };
   const knowledge = new Map(["lexeme:nun", "lexeme:karafs", "lexeme:darim"].map((key) => [key, state]));
   const seen = new Map(content.sentences.map((s) => [s.id, 5]));
   const review = planSession(mixed, knowledge, { now: new Date("2026-01-01"), seed: 3, maxNew: 0, seen });

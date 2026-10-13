@@ -1,109 +1,121 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  DEFAULT_EASE_FACTOR,
-  MIN_EASE_FACTOR,
-  NEW_ITEM_STATE,
-  placementSeedState,
-  qualityFromOutcome,
-  reviewItem,
-} from "./srs.ts";
+import { DESIRED_RETENTION, MAX_INTERVAL_DAYS, NEW_ITEM_STATE, intervalFor, retrievability, reviewItem, type SrsState } from "./srs.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const NOW = new Date("2026-01-01T00:00:00.000Z");
+const later = (from: Date, days: number) => new Date(from.getTime() + days * DAY_MS);
 
-function closeTo(actual: number, expected: number, epsilon = 1e-9) {
-  assert.ok(
-    Math.abs(actual - expected) < epsilon,
-    `expected ${actual} to be close to ${expected}`,
-  );
+function closeTo(actual: number, expected: number, epsilon = 1e-3) {
+  assert.ok(Math.abs(actual - expected) < epsilon, `expected ${actual} to be close to ${expected}`);
 }
 
-function daysBetween(a: Date, b: Date): number {
-  return Math.round((b.getTime() - a.getTime()) / DAY_MS);
-}
-
-test("qualityFromOutcome maps conversational outcomes to SM-2 quality", () => {
-  assert.equal(qualityFromOutcome("correct"), 5);
-  assert.equal(qualityFromOutcome("recast"), 2);
-  assert.equal(qualityFromOutcome("unknown"), null);
-});
-
-test("three consecutive perfect reviews follow the classic SM-2 interval ladder", () => {
-  let state = NEW_ITEM_STATE;
-  let now = NOW;
-
-  const r1 = reviewItem(state, 5, now);
-  assert.equal(r1.repetitions, 1);
-  assert.equal(r1.intervalDays, 1);
-  closeTo(r1.easeFactor, 2.6); // +0.1 per SM-2 formula at quality 5
-  assert.equal(daysBetween(now, r1.dueAt), 1);
-
-  now = r1.dueAt;
-  state = r1;
-  const r2 = reviewItem(state, 5, now);
-  assert.equal(r2.repetitions, 2);
-  assert.equal(r2.intervalDays, 6);
-  closeTo(r2.easeFactor, 2.7);
-
-  now = r2.dueAt;
-  state = r2;
-  const r3 = reviewItem(state, 5, now);
-  assert.equal(r3.repetitions, 3);
-  assert.equal(r3.intervalDays, Math.round(6 * 2.7)); // 16
-  closeTo(r3.easeFactor, 2.8);
-});
-
-test("quality 4 leaves ease factor unchanged", () => {
-  const r = reviewItem(NEW_ITEM_STATE, 4, NOW);
-  closeTo(r.easeFactor, DEFAULT_EASE_FACTOR);
-  assert.equal(r.repetitions, 1);
-  assert.equal(r.intervalDays, 1);
-});
-
-test("a recast (quality 2) resets repetitions and interval, but does not zero the ease factor", () => {
-  const r = reviewItem(NEW_ITEM_STATE, 2, NOW);
-  assert.equal(r.repetitions, 0);
-  assert.equal(r.intervalDays, 1);
-  assert.equal(r.lapses, 1);
-  // 2.5 + (0.1 - 3*(0.08 + 3*0.02)) = 2.5 - 0.32 = 2.18
-  closeTo(r.easeFactor, 2.18);
-  assert.ok(r.easeFactor > MIN_EASE_FACTOR, "recast should not collapse ease to the floor");
-});
-
-test("ease factor is floored at MIN_EASE_FACTOR, never goes negative or below it", () => {
-  let state = { intervalDays: 1, easeFactor: MIN_EASE_FACTOR + 0.01, repetitions: 2, lapses: 0 };
-  // Repeated total blanks (quality 0) should still floor, not crash through it.
-  for (let i = 0; i < 5; i++) {
-    state = reviewItem(state, 0, NOW);
+/** Answers right every time, each review on the day it falls due. */
+function rightOnTime(state: SrsState, times: number, start = NOW) {
+  let now = start;
+  let current = reviewItem(state, "good", now);
+  for (let i = 1; i < times; i++) {
+    now = current.dueAt;
+    current = reviewItem(current, "good", now);
   }
-  assert.equal(state.easeFactor, MIN_EASE_FACTOR);
+  return current;
+}
+
+test("stability is the number of days for recall to fall to the desired retention", () => {
+  closeTo(retrievability(10, 10), DESIRED_RETENTION);
+  assert.equal(intervalFor(10), 10);
+  assert.equal(intervalFor(0.2), 1);
+  assert.equal(intervalFor(5000), MAX_INTERVAL_DAYS);
 });
 
-test("a lapse after prior good reviews resets repetitions/interval but preserves accumulated ease above the floor", () => {
-  const afterTwoGood = reviewItem(reviewItem(NEW_ITEM_STATE, 5, NOW), 5, NOW);
-  assert.equal(afterTwoGood.repetitions, 2);
-  assert.equal(afterTwoGood.intervalDays, 6);
+test("a first right answer starts from the published FSRS-5 defaults, but comes back the next day", () => {
+  const r = reviewItem(NEW_ITEM_STATE, "good", NOW);
+  closeTo(r.stability, 3.173);
+  closeTo(r.difficulty, 5.2824);
+  assert.equal(r.intervalDays, 1);
+  assert.equal(r.repetitions, 1);
+  assert.equal(r.lapses, 0);
+  assert.equal(r.dueAt.getTime(), later(NOW, 1).getTime());
+  assert.equal(r.lastReviewedAt.getTime(), NOW.getTime());
+});
 
-  const lapsed = reviewItem(afterTwoGood, 2, NOW);
+test("a first wrong answer starts harder and comes back the next day", () => {
+  const r = reviewItem(NEW_ITEM_STATE, "again", NOW);
+  closeTo(r.stability, 0.40255);
+  closeTo(r.difficulty, 7.1949);
+  assert.equal(r.intervalDays, 1);
+  assert.equal(r.repetitions, 0);
+  assert.equal(r.lapses, 1);
+});
+
+const REFERENCE = {
+  second: { stability: 5.86914185, difficulty: 5.27296793, intervalDays: 6 },
+  third: { stability: 19.84586547, difficulty: 5.26354498, intervalDays: 20 },
+  lapsed: { stability: 2.95931827, difficulty: 6.78423209 },
+};
+
+// What ts-fsrs 4.7.1 (FSRS-5, enable_short_term: false) gives for the same
+// reviews at the same times: right on day 0, day 1, day 7, then wrong on day 27.
+test("right answers on time match the reference implementation", () => {
+  const second = rightOnTime(NEW_ITEM_STATE, 2);
+  closeTo(second.stability, REFERENCE.second.stability);
+  closeTo(second.difficulty, REFERENCE.second.difficulty);
+  assert.equal(second.intervalDays, REFERENCE.second.intervalDays);
+  const third = rightOnTime(NEW_ITEM_STATE, 3);
+  closeTo(third.stability, REFERENCE.third.stability);
+  closeTo(third.difficulty, REFERENCE.third.difficulty);
+  assert.equal(third.intervalDays, REFERENCE.third.intervalDays);
+  assert.equal(third.repetitions, 3);
+});
+
+test("a miss resets the run and comes back next day, but keeps part of what was learned", () => {
+  const known = rightOnTime(NEW_ITEM_STATE, 3);
+  const lapsed = reviewItem(known, "again", known.dueAt);
   assert.equal(lapsed.repetitions, 0);
-  assert.equal(lapsed.intervalDays, 1);
   assert.equal(lapsed.lapses, 1);
-  assert.ok(lapsed.easeFactor < afterTwoGood.easeFactor, "a lapse should reduce ease");
+  assert.equal(lapsed.intervalDays, 1);
+  assert.ok(lapsed.stability < known.stability);
+  assert.ok(lapsed.stability > 1, "more is left than of a word never known");
+  closeTo(lapsed.stability, REFERENCE.lapsed.stability);
+  closeTo(lapsed.difficulty, REFERENCE.lapsed.difficulty);
 });
 
-test("placementSeedState marks items as low-confidence, due tomorrow, unreviewed", () => {
-  const seed = placementSeedState(NOW);
-  assert.equal(seed.repetitions, 0);
-  assert.equal(seed.lapses, 0);
-  assert.equal(seed.intervalDays, 1);
-  assert.equal(seed.easeFactor, DEFAULT_EASE_FACTOR);
-  assert.equal(seed.lastReviewedAt, null);
-  assert.equal(daysBetween(NOW, seed.dueAt), 1);
+test("intervals keep growing with right answers and difficulty never rises", () => {
+  let state = rightOnTime(NEW_ITEM_STATE, 1);
+  for (let i = 0; i < 6; i++) {
+    const next = reviewItem(state, "good", state.dueAt);
+    assert.ok(next.intervalDays > state.intervalDays || next.intervalDays === MAX_INTERVAL_DAYS);
+    assert.ok(next.difficulty <= state.difficulty, "a right answer never makes an item harder");
+    state = next;
+  }
 });
 
-test("reviewItem always sets lastReviewedAt to the review time", () => {
-  const r = reviewItem(NEW_ITEM_STATE, 5, NOW);
-  assert.equal(r.lastReviewedAt?.getTime(), NOW.getTime());
+test("a word missed once recovers, which the old ease factor never did", () => {
+  const known = rightOnTime(NEW_ITEM_STATE, 3);
+  const lapsed = reviewItem(known, "again", known.dueAt);
+  const recovered = rightOnTime(lapsed, 3, lapsed.dueAt);
+  assert.ok(recovered.intervalDays > known.intervalDays / 2, `${recovered.intervalDays} days after three right answers`);
+});
+
+test("repeated misses push difficulty towards its ceiling, never past it", () => {
+  let state = reviewItem(NEW_ITEM_STATE, "again", NOW);
+  for (let i = 0; i < 20; i++) state = reviewItem(state, "again", later(NOW, i + 1));
+  assert.ok(state.difficulty <= 10);
+  assert.ok(state.difficulty > 9);
+  assert.ok(state.stability > 0);
+  assert.equal(state.intervalDays, 1);
+});
+
+test("a right answer long overdue earns more than one given on time", () => {
+  const known = rightOnTime(NEW_ITEM_STATE, 2);
+  const onTime = reviewItem(known, "good", known.dueAt);
+  const overdue = reviewItem(known, "good", later(known.dueAt, 30));
+  assert.ok(overdue.stability > onTime.stability);
+});
+
+test("a state with no review time falls back on its scheduled interval", () => {
+  const known = rightOnTime(NEW_ITEM_STATE, 2);
+  const converted = { ...known, lastReviewedAt: null };
+  closeTo(reviewItem(converted, "good", known.dueAt).stability, reviewItem(known, "good", known.dueAt).stability, 1e-6);
 });

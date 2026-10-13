@@ -11,10 +11,12 @@ const now = new Date(2026, 9, 12, 15);
 const DAY = 24 * 60 * 60 * 1000;
 const state = (repetitions: number, lapses = 0, dueInDays = 0, intervalDays = 1): KnowledgeState => ({
   intervalDays,
-  easeFactor: 2.5,
+  stability: 1,
+  difficulty: 5,
   repetitions,
   lapses,
   dueAt: new Date(now.getTime() + dueInDays * DAY),
+  lastReviewedAt: null,
 });
 
 test("a stage says how the last answers went, not how many there were", () => {
