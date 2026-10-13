@@ -3,6 +3,9 @@ import { test } from "node:test";
 import { buildTheme, validateCourse, validateTheme } from "./build.ts";
 import { P, W } from "./common.ts";
 import { PATTERNS, THEMES } from "./index.ts";
+import { introducedState } from "../lesson/grade.ts";
+import { planSession } from "../lesson/plan.ts";
+import { targetKey, type KnowledgeState } from "../lesson/types.ts";
 import type { ThemeSeed } from "./types.ts";
 
 for (const theme of THEMES) {
@@ -37,6 +40,35 @@ test("PATTERNS lists each curated pattern once", () => {
   const ids = PATTERNS.map((p) => p.id);
   assert.equal(new Set(ids).size, ids.length);
   assert.deepEqual(new Set(ids), new Set(THEMES.flatMap((t) => t.patterns.map((p) => p.id))));
+});
+
+test("a learner taking the themes in order is taught every word and pattern exactly once", () => {
+  const knowledge = new Map<string, KnowledgeState>();
+  const introduced: string[] = [];
+  const now = new Date("2026-01-01T09:00:00Z");
+  for (const theme of THEMES) {
+    const content = buildTheme(theme);
+    for (let session = 0; ; session++) {
+      assert.ok(session < 100, `${theme.id}: the ladder never ran out`);
+      const plan = planSession(content, knowledge, { now, seed: session });
+      for (const exercise of plan.exercises) {
+        if (exercise.type === "intro-lexeme" || exercise.type === "intro-pattern") {
+          introduced.push(targetKey(exercise.target));
+          knowledge.set(targetKey(exercise.target), introducedState(now));
+          continue;
+        }
+        // Every question has its answer among distinct options.
+        if (exercise.type === "choice") {
+          assert.ok(exercise.answer >= 0, `${theme.id} ${exercise.key}: no right answer offered`);
+          assert.equal(new Set(exercise.options).size, exercise.options.length, `${theme.id} ${exercise.key}: repeated option`);
+        }
+      }
+      if (plan.newCount === 0) break;
+    }
+  }
+  const taught = new Set(THEMES.flatMap((t) => [...t.lexemes.map((l) => `lexeme:${l.id}`), ...t.patterns.map((p) => `pattern:${p.id}`)]));
+  assert.equal(introduced.length, new Set(introduced).size, "something was introduced twice");
+  assert.deepEqual(new Set(introduced), taught);
 });
 
 const base: ThemeSeed = {
