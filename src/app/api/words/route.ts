@@ -5,9 +5,9 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { lexemes } from "@/lib/db/schema";
 import { draftWord } from "@/lib/lesson/author";
-import { addWord, findExisting, prepareWord, removeWord, validateWord } from "@/lib/lesson/words";
+import { prepareWord } from "@/lib/lesson/background";
+import { addWord, findExisting, removeWord, validateWord } from "@/lib/lesson/words";
 import { errorResponse, requireApiKey } from "@/lib/openai";
-import { reportError } from "@/lib/report-error";
 
 const Person = z.enum(["1sg", "2sg", "3sg", "1pl", "2pl", "3pl"]);
 const text = (max: number) => z.string().max(max);
@@ -61,7 +61,7 @@ export async function POST(request: Request): Promise<Response> {
       if (existing) return Response.json({ error: `${existing.fa} ("${existing.gloss}") is already in your reference.` }, { status: 409 });
       const id = await addWord(userId, data.entry);
       // Audio and example sentences take a while; the word is usable without them.
-      after(() => prepareWord(userId, id).catch((err) => reportError("prepareWord", err, { userId, lexemeId: id })));
+      after(() => prepareWord(userId, id));
       return Response.json({ id });
     }
 

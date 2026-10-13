@@ -1,11 +1,8 @@
 import { createHash } from "node:crypto";
 import { and, arrayContains, eq, isNull, or } from "drizzle-orm";
-import { wordClip } from "@/lib/audio-key";
-import { makeVerifiedClip } from "@/lib/audio-store";
 import { db } from "@/lib/db";
 import { knowledge, lexemes, sentences, themes } from "@/lib/db/schema";
 import { normalizeForCompare, normalizePersian } from "@/lib/normalize";
-import { topUpSentences } from "./generate";
 import type { Lexeme, Person } from "./types";
 
 /** A word the learner met outside the app, as they confirmed it. */
@@ -104,14 +101,6 @@ export async function addWord(userId: string, entry: WordEntry): Promise<string>
     patternIds: [],
   });
   return word.id;
-}
-
-/** The slow follow-up to adding a word: its audio, and sentences that use it. Run after the response. */
-export async function prepareWord(userId: string, lexemeId: string): Promise<void> {
-  const word = await db.query.lexemes.findFirst({ where: and(eq(lexemes.id, lexemeId), eq(lexemes.ownerId, userId)) });
-  if (!word) return;
-  await makeVerifiedClip(wordClip(word));
-  await topUpSentences(userId, { force: true, focus: [lexemeId], count: 4 });
 }
 
 /** Removes one of the learner's own words, with its sentences and their progress on it. */
