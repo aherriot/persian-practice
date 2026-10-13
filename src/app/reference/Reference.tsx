@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Correct } from "@/components/Correct";
 import { Input } from "@/components/Input";
 import { unlockAudio } from "@/lib/audio-client";
 import { normalizeForCompare } from "@/lib/normalize";
@@ -56,24 +57,27 @@ const haystack = (parts: (string | null)[]) => {
 /** Undefined while they are on their way; null when they could not be fetched. */
 type Loaded = ReferenceExample[] | null | undefined;
 
-function Examples({ examples }: { examples: Loaded }) {
+function Examples({ examples, onChanged }: { examples: Loaded; onChanged: () => void }) {
   if (examples === undefined) return <p className="text-xs text-ink/50">Finding examples…</p>;
   if (examples === null) return <p className="text-xs text-crimson">Could not load the examples. Close and reopen to try again.</p>;
   if (examples.length === 0) return <p className="text-xs text-ink/50">No example sentences yet.</p>;
   return (
     <ul className="flex flex-col gap-1.5">
       {examples.map((example) => (
-        <li key={example.id} className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p dir="rtl" lang="fa" className="text-lg leading-[1.9] text-ink">
-              {example.voc}
-            </p>
-            <p className="text-xs text-ink/60">
-              {example.translit} · <span className="text-ink/80">{example.english}</span>
-              {example.generated && <span className="ml-2 text-ink/45">written by the app</span>}
-            </p>
+        <li key={example.id} className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p dir="rtl" lang="fa" className="text-lg leading-[1.9] text-ink">
+                {example.voc}
+              </p>
+              <p className="text-xs text-ink/60">
+                {example.translit} · <span className="text-ink/80">{example.english}</span>
+                {example.generated && <span className="ml-2 text-ink/45">written by the app</span>}
+              </p>
+            </div>
+            <SpeakButton small url={example.audioUrl} label="Hear the sentence" />
           </div>
-          <SpeakButton small url={example.audioUrl} label="Hear the sentence" />
+          <Correct subject={{ kind: "sentence", id: example.id }} own={example.generated} onChanged={onChanged} />
         </li>
       ))}
     </ul>
@@ -151,13 +155,7 @@ export function Reference({ words, patterns }: { words: ReferenceWord[]; pattern
   const [examples, setExamples] = useState<ReadonlyMap<string, Loaded>>(new Map());
   const requested = useRef(new Set<string>());
 
-  const toggle = (key: string) => {
-    setOpen((current) => {
-      const next = new Set(current);
-      if (!next.delete(key)) next.add(key);
-      return next;
-    });
-    if (requested.current.has(key)) return;
+  const load = (key: string) => {
     requested.current.add(key);
     const [kind, id] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
     fetch(`/api/reference/examples?${new URLSearchParams({ kind, id })}`)
@@ -168,6 +166,22 @@ export function Reference({ words, patterns }: { words: ReferenceWord[]; pattern
         return null;
       })
       .then((loaded) => setExamples((current) => new Map(current).set(key, loaded)));
+  };
+
+  const toggle = (key: string) => {
+    setOpen((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+    if (!requested.current.has(key)) load(key);
+  };
+
+  /** Something under this entry was fixed: show it as it now is. A word's fix reaches other entries' examples too. */
+  const changed = (key: string) => {
+    requested.current = new Set();
+    for (const shown of new Set([...open, key])) load(shown);
+    router.refresh();
   };
 
   const remove = async (word: ReferenceWord) => {
@@ -259,7 +273,7 @@ export function Reference({ words, patterns }: { words: ReferenceWord[]; pattern
             </div>
           )}
           <p className="text-sm leading-relaxed text-ink/75">{pattern.summary}</p>
-          <Examples examples={examples.get(row.key)} />
+          <Examples examples={examples.get(row.key)} onChanged={() => changed(row.key)} />
         </Entry>
       );
     }
@@ -323,7 +337,8 @@ export function Reference({ words, patterns }: { words: ReferenceWord[]; pattern
           )}
         </div>
         {word.note && <p className="text-sm text-ink/70">{word.note}</p>}
-        <Examples examples={examples.get(row.key)} />
+        <Correct subject={{ kind: "lexeme", id: word.id }} own={word.addedBy !== null} onChanged={() => changed(row.key)} />
+        <Examples examples={examples.get(row.key)} onChanged={() => changed(row.key)} />
       </Entry>
     );
   };
