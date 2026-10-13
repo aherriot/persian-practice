@@ -160,9 +160,12 @@ export const EXERCISE_SKILL = {
   // Sound alone.
   listen: "listening", // hear a sentence, pick its meaning
   "hear-word": "listening", // hear a word, pick its meaning
+  "hear-pick": "listening", // hear a word, pick which written word it was
+  dictation: "listening", // hear a sentence, build it from its words
   // Persian text alone; no sound until answered.
   read: "reading", // read a sentence, pick its meaning
   "read-word": "reading", // read a word, pick its meaning
+  pronounce: "reading", // read a word without its vowel marks, pick how it is said
   // A meaning, to be answered in Persian.
   "pick-word": "producing", // see a meaning, pick the Persian word
   cloze: "producing", // pick the word missing from a sentence
@@ -182,7 +185,8 @@ export type ChoiceExercise = Graded & {
 
 export type TilesExercise = Graded & {
   type: "tiles";
-  variant: "tiles";
+  /** tiles: the meaning is shown.  dictation: the sentence is only heard. */
+  variant: "tiles" | "dictation";
   tiles: { fa: string; voc: string; showVowels: boolean }[];
   /** Normalised word sequences that count as correct, the model answer first. */
   accepted: AcceptedAnswer[];

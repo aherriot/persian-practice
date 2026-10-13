@@ -23,8 +23,10 @@ function audioFor(exercise: Exercise): string[] {
 function openingAudio(exercise: Exercise): string | null {
   if (exercise.type === "intro-lexeme") return exercise.lexeme.audioUrl;
   if (exercise.type === "intro-pattern") return exercise.sentence.audioUrl;
-  if (exercise.type === "choice" && exercise.variant === "listen") return exercise.sentence.audioUrl;
-  if (exercise.type === "choice" && exercise.variant === "hear-word") return exercise.wordAudioUrl ?? null;
+  if (exercise.type === "tiles") return exercise.variant === "dictation" ? exercise.sentence.audioUrl : null;
+  if (exercise.type !== "choice") return null;
+  if (exercise.variant === "listen") return exercise.sentence.audioUrl;
+  if (exercise.variant === "hear-word" || exercise.variant === "hear-pick") return exercise.wordAudioUrl ?? null;
   return null;
 }
 
@@ -120,7 +122,8 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
           setQueue((q) => [...q, { ...exercise, key: `${exercise.key}-retry`, primary: null, others: [] }]);
         }
       }
-      if (!(exercise.type === "choice" && exercise.variant === "listen" && correct)) {
+      // Having just heard the sentence and got it right, there is no call to hear it again.
+      if (!(correct && (exercise.variant === "listen" || exercise.variant === "dictation"))) {
         void playAudio(exercise.sentence.audioUrl);
       }
     },
@@ -359,14 +362,16 @@ function Example({ exercise }: { exercise: Exercise }) {
 const CHOICE_PROMPT: Record<ChoiceExercise["variant"], string> = {
   listen: "What did you hear?",
   "hear-word": "What does the word you hear mean?",
+  "hear-pick": "Which word did you hear?",
   read: "What does this mean?",
   "read-word": "What does this word mean?",
+  pronounce: "How is this word said?",
   "pick-word": "Which word means this?",
   cloze: "Which word is missing?",
 };
 
 /** Exercises answered by picking Persian rather than English. */
-const PERSIAN_OPTIONS: ReadonlySet<ChoiceExercise["variant"]> = new Set(["pick-word", "cloze"]);
+const PERSIAN_OPTIONS: ReadonlySet<ChoiceExercise["variant"]> = new Set(["hear-pick", "pick-word", "cloze"]);
 
 function Choice({
   exercise,
@@ -407,7 +412,7 @@ function Choice({
 
       <div className="flex min-h-28 flex-col items-center justify-center gap-3 text-center">
         {exercise.variant === "listen" && <SpeakButton url={exercise.sentence.audioUrl} label="Hear it again" large />}
-        {exercise.variant === "hear-word" && exercise.wordAudioUrl && (
+        {(exercise.variant === "hear-word" || exercise.variant === "hear-pick") && exercise.wordAudioUrl && (
           <SpeakButton url={exercise.wordAudioUrl} label="Hear it again" large />
         )}
         {/* Reading is tested with nothing to lean on: no sound, and no pronunciation behind a tap. */}
@@ -415,6 +420,12 @@ function Choice({
         {exercise.variant === "read-word" && token && (
           <p dir="rtl" lang="fa" className="text-5xl leading-[1.9] text-ink">
             {shown(token)}
+          </p>
+        )}
+        {/* As a native reader meets it: no vowel marks, whatever the learner is usually shown. */}
+        {exercise.variant === "pronounce" && token && (
+          <p dir="rtl" lang="fa" className="text-5xl leading-[1.9] text-ink">
+            {token.fa}
           </p>
         )}
         {exercise.variant === "pick-word" && token && <p className="text-2xl font-semibold text-ink">{token.gloss}</p>}
@@ -452,7 +463,7 @@ function Choice({
                   {option}
                 </span>
               ) : (
-                <span className="flex-1 text-sm text-ink">{option}</span>
+                <span className={`flex-1 text-ink ${exercise.variant === "pronounce" ? "text-lg" : "text-sm"}`}>{option}</span>
               )}
             </button>
           );
@@ -486,8 +497,14 @@ function Tiles({
 
   return (
     <>
-      <Eyebrow>Build this sentence</Eyebrow>
-      <p className="text-center text-lg font-medium text-ink">{exercise.sentence.english}</p>
+      <Eyebrow>{exercise.variant === "dictation" ? "Build what you hear" : "Build this sentence"}</Eyebrow>
+      {exercise.variant === "dictation" ? (
+        <div className="flex justify-center">
+          <SpeakButton url={exercise.sentence.audioUrl} label="Hear it again" large />
+        </div>
+      ) : (
+        <p className="text-center text-lg font-medium text-ink">{exercise.sentence.english}</p>
+      )}
 
       <div
         dir="rtl"

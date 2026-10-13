@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import { closeTestDb, createTestDb, emptyTestDb, type TestDb } from "../db/test-db.ts";
-import { knowledge, lexemes, reviewLog, sentences, themes, users } from "../db/schema.ts";
+import { wordClip } from "../audio-key.ts";
+import { audioClips, knowledge, lexemes, reviewLog, sentences, themes, users } from "../db/schema.ts";
 import type { SessionPlan } from "./types.ts";
 import { SKILLS } from "./types.ts";
 
@@ -393,4 +394,22 @@ test("a word the learner picked wrongly before is offered again as a wrong answe
     }
   }
   assert.ok(asked > 3, `apple's meaning was asked ${asked} times`);
+});
+
+test("a word whose clip is a whole sentence is not asked about by the sound of it alone", async () => {
+  await addCourse();
+  await know(ME, ["apple", "pear"], { repetitions: 1 });
+  const heardAlone = async () => {
+    const words = new Set<string>();
+    for (let seed = 1; seed <= 30; seed++) {
+      const plan = await loadSession(ME, { now: NOW, seed, maxNew: 0 });
+      for (const e of plan.exercises) if (e.type === "choice" && e.variant === "hear-word" && e.primary) words.add(e.primary.id);
+    }
+    return [...words].sort();
+  };
+  assert.deepEqual(await heardAlone(), ["apple", "pear"]);
+
+  // Apple could not be said alone: its clip is the sentence it is in.
+  await db.insert(audioClips).values({ ...wordClip({ fa: "fa-apple", translit: "apple" }), status: "verified", carrier: "apple pear" });
+  assert.deepEqual(await heardAlone(), ["pear"]);
 });

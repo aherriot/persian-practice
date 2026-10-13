@@ -27,8 +27,11 @@ const STAGES: { stage: Stage; label: string; colour: string; meaning: string }[]
 const EXERCISES: Record<string, string> = {
   listen: "Hearing a sentence",
   "hear-word": "Hearing one word",
+  "hear-pick": "Telling a word by its sound",
+  dictation: "Building a sentence you hear",
   read: "Reading a sentence",
   "read-word": "Reading one word",
+  pronounce: "Sounding out a word without vowel marks",
   "pick-word": "Finding the word for a meaning",
   cloze: "Filling in the missing word",
   tiles: "Building the sentence",

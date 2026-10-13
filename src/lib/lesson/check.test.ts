@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { buildTheme } from "../content/build.ts";
 import { SHOPPING } from "../content/shopping.ts";
-import { checkAnswer, type Submission } from "./check.ts";
+import { normalizeForCompare } from "../normalize.ts";
+import { checkAnswer, EXERCISES, type Submission } from "./check.ts";
 import { componentsOf, planSession } from "./plan.ts";
-import { evenly, targetKey, type ChoiceExercise, type KnowledgeState, type TilesExercise } from "./types.ts";
+import { evenly, exerciseName, targetKey, type ChoiceExercise, type KnowledgeState, type TilesExercise } from "./types.ts";
 
 const content = buildTheme(SHOPPING);
 const NOW = new Date("2026-10-11T12:00:00Z");
@@ -28,7 +29,7 @@ function knowing(n: number, repetitions: number): Map<string, KnowledgeState> {
 const sentence = (id: string) => content.sentences.find((s) => s.id === id)!;
 const submit = (exercise: ChoiceExercise | TilesExercise, answer: string | string[]): Submission => ({
   sentenceId: exercise.sentence.id,
-  exercise: exercise.type === "tiles" ? "tiles" : exercise.variant,
+  exercise: exerciseName(exercise),
   primary: exercise.primary,
   answer,
 });
@@ -56,8 +57,9 @@ test("the server marks every planned exercise the way the browser does", () => {
         assert.equal(verdict.picked, i === exercise.answer ? null : option);
       });
     } else {
-      seen.add("tiles");
+      seen.add(exercise.variant);
       const model = s.tokens.map((t) => t.fa);
+      if (exercise.variant === "dictation") assert.deepEqual(exercise.accepted.map((a) => a.text), [normalizeForCompare(model.join(" "))]);
       const right = checkAnswer(s, content, submit(exercise, model));
       assert.ok(right.ok && right.correct, `model answer for ${s.id}`);
       const wrong = checkAnswer(s, content, submit(exercise, [...model, model[0]]));
@@ -65,7 +67,7 @@ test("the server marks every planned exercise the way the browser does", () => {
       assert.equal(wrong.picked, [...model, model[0]].join(" "));
     }
   }
-  assert.deepEqual([...seen].sort(), ["cloze", "hear-word", "listen", "pick-word", "read", "read-word", "tiles"]);
+  assert.deepEqual([...seen].sort(), [...EXERCISES].sort());
 });
 
 test("the server works out for itself what else a sentence exercises", () => {
@@ -109,4 +111,16 @@ test("ungraded practice is still marked, with every part of the sentence as an o
   const verdict = checkAnswer(s, content, { sentenceId: s.id, exercise: "listen", primary: null, answer: s.english });
   assert.ok(verdict.ok && verdict.correct);
   assert.deepEqual(verdict.others, componentsOf(s));
+});
+
+test("a sentence built from hearing it is marked against what was said, not another way of saying it", () => {
+  // "هویج داریم" and "ما هویج داریم" both mean "We have carrots."
+  const short = content.sentences.find((s) => s.english === "We have carrots." && s.tokens.length === 2)!;
+  const withPronoun = content.sentences.find((s) => s.english === short.english && s.tokens.length === 3)!;
+  const longer = withPronoun.tokens.map((t) => t.fa);
+  const from = (exercise: "tiles" | "dictation") => checkAnswer(short, content, { sentenceId: short.id, exercise, primary: null, answer: longer });
+  const meaning = from("tiles");
+  const heard = from("dictation");
+  assert.ok(meaning.ok && meaning.correct);
+  assert.ok(heard.ok && !heard.correct);
 });
