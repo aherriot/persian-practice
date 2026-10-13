@@ -9,9 +9,9 @@ const globalForDb = globalThis as unknown as {
   db?: ReturnType<typeof drizzle<typeof schema>>;
 };
 
-const sql = neon(process.env.DATABASE_URL!);
-
-export const db = globalForDb.db ?? drizzle(sql, { schema });
+// Connects only when nothing has been put there first, which is how tests run
+// the same queries against an in-process Postgres (see ./test-db.ts).
+export const db = globalForDb.db ?? drizzle(neon(process.env.DATABASE_URL!), { schema });
 
 if (process.env.NODE_ENV !== "production") {
   globalForDb.db = db;
