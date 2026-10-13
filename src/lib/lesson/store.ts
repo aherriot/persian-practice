@@ -1,8 +1,10 @@
-import { and, asc, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, ne, or, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db";
 import { knowledge, lexemes, patterns, reviewLog, sentences, themes } from "@/lib/db/schema";
+import { checkAnswer, type Submission } from "./check";
 import { applyAnswer, introducedState } from "./grade";
+import { componentsOf } from "./plan";
 import { targetKey, type Kind, type KnowledgeState, type Lexeme, type Pattern, type Sentence, type Target } from "./types";
 
 /** Lexemes, themes and sentences are visible when curated (no owner) or the learner's own. */
@@ -27,6 +29,15 @@ export const allIn = (column: AnyPgColumn, ids: SQL) =>
 /** A sentence made only of what the learner has met. */
 export const eligibleSentence = (userId: string) =>
   and(allIn(sentences.lexemeIds, knownIds(userId, "lexeme")), allIn(sentences.patternIds, knownIds(userId, "pattern")))!;
+
+/**
+ * Every sentence the learner has that means one of `english`. Sentence-building
+ * has to accept each of them, whichever one the exercise was made from.
+ */
+export const sameMeaning = (userId: string, english: string[]) => and(visibleSentence(userId), inArray(sentences.english, english))!;
+
+/** The ids of the words used by the sentences matching `where`, as a subquery. */
+export const wordsOf = (where: SQL) => sql`(select unnest(${sentences.lexemeIds}) from ${sentences} where ${where})`;
 
 export const usesTarget = (target: Target) =>
   sql`${target.kind === "lexeme" ? sentences.lexemeIds : sentences.patternIds} @> ${textArray([target.id])}`;
@@ -165,25 +176,58 @@ export async function introduce(userId: string, target: Target, now = new Date()
     .onConflictDoNothing();
 }
 
-export type AnswerInput = {
-  sentenceId: string;
-  exercise: string;
-  correct: boolean;
-  primary: Target | null;
-  others: Target[];
-};
+export type AnswerResult = { ok: true; correct: boolean } | { ok: false; reason: string };
 
-export async function recordAnswer(userId: string, input: AnswerInput, now = new Date()): Promise<void> {
-  const targets = input.primary ? [input.primary, ...input.others] : input.others;
-  const states = targets.length > 0 ? await loadKnowledge(userId, targets) : new Map<string, KnowledgeState>();
-  const updates = applyAnswer(states, input.primary, input.others, input.correct, now);
+/**
+ * Marks what the learner did and records it. The browser says only what was
+ * picked or built; whether that was right, and what it says about each word in
+ * the sentence, is worked out here.
+ */
+export async function recordAnswer(userId: string, submission: Submission, now = new Date()): Promise<AnswerResult> {
+  // A sentence retired since the session was planned can still be answered.
+  const [sentence] = await db
+    .select()
+    .from(sentences)
+    .where(and(eq(sentences.id, submission.sentenceId), or(isNull(sentences.ownerId), eq(sentences.ownerId, userId))))
+    .limit(1);
+  if (!sentence) return { ok: false, reason: "unknown sentence" };
+
+  const building = submission.exercise === "tiles";
+  const [alternates, lexemeRows, states] = await Promise.all([
+    building
+      ? db.select().from(sentences).where(and(sameMeaning(userId, [sentence.english]), ne(sentences.id, sentence.id)))
+      : [],
+    db
+      .select()
+      .from(lexemes)
+      .where(
+        and(
+          visibleLexeme(userId),
+          building
+            ? // As in loadSession: the words of every way of saying it, and the pronouns an answer may add or drop.
+              or(inArray(lexemes.id, wordsOf(sameMeaning(userId, [sentence.english]))), isNotNull(lexemes.subjectPronoun))
+            : inArray(lexemes.id, sentence.lexemeIds),
+        ),
+      ),
+    loadKnowledge(userId, componentsOf(sentence)),
+  ]);
+
+  const verdict = checkAnswer(
+    sentence,
+    { sentences: [sentence, ...alternates], lexemes: new Map(lexemeRows.map((l) => [l.id, l])), patterns: new Map() },
+    submission,
+  );
+  if (!verdict.ok) return verdict;
+  const updates = applyAnswer(states, verdict.primary, verdict.others, verdict.correct, now);
 
   await Promise.all([
     db.insert(reviewLog).values({
       userId,
-      sentenceId: input.sentenceId,
-      exercise: input.exercise,
-      correct: input.correct,
+      sentenceId: sentence.id,
+      exercise: submission.exercise,
+      correct: verdict.correct,
+      target: verdict.primary ? targetKey(verdict.primary) : null,
+      picked: verdict.picked,
     }),
     ...[...updates].map(([key, state]) => {
       const kind = key.slice(0, key.indexOf(":")) as Target["kind"];
@@ -194,6 +238,7 @@ export async function recordAnswer(userId: string, input: AnswerInput, now = new
         .where(and(eq(knowledge.userId, userId), eq(knowledge.kind, kind), eq(knowledge.refId, refId)));
     }),
   ]);
+  return { ok: true, correct: verdict.correct };
 }
 
 export type ThemeSummary = {

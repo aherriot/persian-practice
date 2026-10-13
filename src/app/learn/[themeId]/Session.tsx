@@ -92,19 +92,19 @@ export function Session({ plan, href }: { plan: SessionPlan; href: string }) {
   const advance = useCallback(() => goTo(index + 1), [goTo, index]);
 
   const grade = useCallback(
-    (correct: boolean, note?: string) => {
+    (correct: boolean, answer: string | string[], note?: string) => {
       if (!exercise || exercise.type === "intro-lexeme" || exercise.type === "intro-pattern") return;
       setAnswered(correct);
       setRemark(note ?? null);
       const isRetry = exercise.key.endsWith("-retry");
       if (!isRetry) {
         setScore((s) => ({ right: s.right + (correct ? 1 : 0), total: s.total + 1 }));
+        // `correct` is this page's own marking, for showing at once. The server marks the answer again and stores that.
         save({
           sentenceId: exercise.sentence.id,
           exercise: exercise.type === "choice" ? exercise.variant : exercise.type,
-          correct,
           primary: exercise.primary,
-          others: exercise.others,
+          answer,
         });
         // A miss comes back once at the end, ungraded, so the session ends on a success.
         if (!correct) {
@@ -338,7 +338,7 @@ function Choice({
 }: {
   exercise: ChoiceExercise;
   answered: boolean | null;
-  onAnswer: (correct: boolean) => void;
+  onAnswer: (correct: boolean, picked: string) => void;
 }) {
   const [picked, setPicked] = useState<number | null>(null);
   const done = answered !== null;
@@ -348,7 +348,7 @@ function Choice({
     (i: number) => {
       if (done || i >= exercise.options.length) return;
       setPicked(i);
-      onAnswer(i === exercise.answer);
+      onAnswer(i === exercise.answer, exercise.options[i]);
     },
     [done, exercise, onAnswer],
   );
@@ -430,15 +430,16 @@ function Tiles({
 }: {
   exercise: TilesExercise;
   answered: boolean | null;
-  onAnswer: (correct: boolean, remark?: string) => void;
+  onAnswer: (correct: boolean, built: string[], remark?: string) => void;
 }) {
   const [chosen, setChosen] = useState<number[]>([]);
   const done = answered !== null;
 
   const check = () => {
-    const built = normalizeForCompare(chosen.map((i) => exercise.tiles[i].fa).join(" "));
+    const words = chosen.map((i) => exercise.tiles[i].fa);
+    const built = normalizeForCompare(words.join(" "));
     const match = exercise.accepted.find((answer) => answer.text === built);
-    onAnswer(match !== undefined, match?.remark);
+    onAnswer(match !== undefined, words, match?.remark);
   };
 
   const tileClass =
