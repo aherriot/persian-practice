@@ -93,7 +93,10 @@ export async function loadSession(
     db
       .select({
         sentence: sentences,
-        seen: sql<number>`(select count(*)::int from ${reviewLog} where ${reviewLog.userId} = ${userId} and ${reviewLog.sentenceId} = ${sentences.id})`,
+        // Not a hand-written subquery: in a select from one table drizzle drops
+        // the table from a column written straight into sql``, and "sentenceId"
+        // = "id" then compares a review with its own id and counts nothing.
+        seen: db.$count(reviewLog, and(eq(reviewLog.userId, userId), eq(reviewLog.sentenceId, sentences.id))),
       })
       .from(sentences)
       .where(sql`${sentences.id} in ${pool}`),
