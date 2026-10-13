@@ -6,18 +6,20 @@ import { createThrottle, isDailyQuota, isRateLimit } from "./throttle.ts";
 test("spaces sequential calls by at least the interval", async () => {
   const throttle = createThrottle(50);
   const stamps: number[] = [];
+  const start = Date.now();
   for (let i = 0; i < 4; i++) {
     await throttle();
     stamps.push(Date.now());
   }
 
   // First call is immediate; each subsequent one waits for its slot, a whole
-  // number of intervals after the first. Measured from the first call rather
-  // than between neighbours: a timer that fires late leaves a short gap to the
-  // next call, which is the gate working, not failing.
+  // number of intervals after the first. Measured from before the first call
+  // rather than between neighbours or from the first call's return: a timer
+  // that fires late, or a busy machine that is slow to hand the first call
+  // back, shortens those gaps while the gate is working exactly as it should.
   for (let i = 1; i < stamps.length; i++) {
-    const elapsed = stamps[i] - stamps[0];
-    assert.ok(elapsed >= i * 50 - 5, `call ${i} came ${elapsed}ms after the first, expected >= ~${i * 50}ms`);
+    const elapsed = stamps[i] - start;
+    assert.ok(elapsed >= i * 50 - 5, `call ${i} came ${elapsed}ms after the start, expected >= ~${i * 50}ms`);
   }
 });
 
