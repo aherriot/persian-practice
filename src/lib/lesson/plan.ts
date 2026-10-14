@@ -27,11 +27,11 @@ export type PlanOptions = {
   maxNew?: number;
   maxReview?: number;
   /**
-   * Target keys to review in place of whatever is due, in this order: a
-   * session about chosen things (the weak-words session) rather than the
-   * schedule's. Ones the learner has not met are ignored.
+   * Target keys of what the learner keeps getting wrong, weakest first (see
+   * weak.ts). Reviewed before anything else that is due, and brought up even
+   * when not due while the session has room. Ones not met are ignored.
    */
-  review?: string[];
+  weak?: string[];
   minExercises?: number;
   /** How many times the learner has answered each sentence. Reviews prefer the least seen. */
   seen?: Map<string, number>;
@@ -72,32 +72,35 @@ export type Due = { key: string; skill: Skill; state: SkillState };
 const firstSkill = (key: string) => [...key].reduce((sum, char) => sum + char.charCodeAt(0), 0) % SKILLS.length;
 
 /**
- * What a session reviews: the skills that are due, most overdue first, or the
- * weakest skill of each thing it was asked for. Each thing comes up in one
- * skill before any comes up in a second.
+ * What a session reviews. Each thing comes up in one skill before any comes
+ * up in a second, in this order:
+ *   1. weak things that are due, the weakest first;
+ *   2. everything else that is due, the most overdue first;
+ *   3. weak things that are not due yet, each in its weakest skill;
+ *   4. second and later skills of what is due.
+ * A weak thing reviewed early is graded by the usual rules: a right answer
+ * moves it on only if it was due, so practising it does not push it out of sight.
  */
-export function dueTargets(knowledge: Map<string, KnowledgeState>, now: Date, max: number, review?: string[]): Due[] {
+export function dueTargets(knowledge: Map<string, KnowledgeState>, now: Date, max: number, weak: string[] = []): Due[] {
   const skillsOf = (key: string, state: KnowledgeState): Due[] => {
     const from = firstSkill(key);
     return SKILLS.map((_, i) => SKILLS[(from + i) % SKILLS.length]).map((skill) => ({ key, skill, state: state.skills[skill] }));
   };
-  if (review) {
-    return review
-      .flatMap((key) => {
-        const state = knowledge.get(key);
-        if (!state) return [];
-        const weakest = (a: Due, b: Due) => a.state.repetitions - b.state.repetitions || a.state.dueAt.getTime() - b.state.dueAt.getTime();
-        return skillsOf(key, state).sort(weakest).slice(0, 1);
-      })
-      .slice(0, max);
-  }
+  const rank = new Map(weak.map((key, i) => [key, i]));
+  const weakFirst = (a: Due, b: Due) => (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity) || 0;
   const due = [...knowledge.entries()]
     .flatMap(([key, state]) => skillsOf(key, state))
     .filter(({ state }) => state.dueAt <= now)
-    .sort((a, b) => a.state.dueAt.getTime() - b.state.dueAt.getTime());
+    .sort((a, b) => weakFirst(a, b) || a.state.dueAt.getTime() - b.state.dueAt.getTime());
   const first = due.filter((item, i) => due.findIndex((other) => other.key === item.key) === i);
   const again = due.filter((item) => !first.includes(item));
-  return [...first, ...again].slice(0, max);
+  const weakest = (a: Due, b: Due) => a.state.repetitions - b.state.repetitions || a.state.dueAt.getTime() - b.state.dueAt.getTime();
+  const early = weak.flatMap((key) => {
+    const state = knowledge.get(key);
+    if (!state || first.some((item) => item.key === key)) return [];
+    return skillsOf(key, state).sort(weakest).slice(0, 1);
+  });
+  return [...first, ...early, ...again].slice(0, max);
 }
 
 function mulberry32(seed: number): () => number {
@@ -395,7 +398,7 @@ export function planSession(
 
   // --- Reviews: decided before anything new is marked known, so a review
   // never leans on a word introduced later in the same session. ---
-  const due = dueTargets(knowledge, now, maxReview, opts.review);
+  const due = dueTargets(knowledge, now, maxReview, opts.weak);
 
   const reviews: Exercise[] = [];
   for (const { key, skill, state } of due) {

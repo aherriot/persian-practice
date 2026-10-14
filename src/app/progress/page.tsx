@@ -228,9 +228,11 @@ export default async function ProgressPage() {
               <p className="mt-2 text-xs text-ink/55">And {journey.struggling.length - LIST} more.</p>
             )}
             <div className="mt-3 flex items-center justify-between gap-3">
-              <p className="text-xs text-ink/55">A wrong answer counts against the word that exercise was testing.</p>
-              <Link href="/practice/weak" className="shrink-0 text-sm font-medium text-cobalt underline">
-                Practise these
+              <p className="text-xs text-ink/55">
+                A wrong answer counts against the word that exercise was testing. Practice brings these up first.
+              </p>
+              <Link href="/practice" className="shrink-0 text-sm font-medium text-cobalt underline">
+                Practise
               </Link>
             </div>
           </>
