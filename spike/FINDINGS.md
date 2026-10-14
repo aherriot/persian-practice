@@ -703,6 +703,11 @@ inside *havij o nun dârim*.
 - Not built yet: an audition step that makes any new instruction, voice or
   retry rung pass a blind human rating on a fixed set of trap clips before it
   is used. It needs approved clips to compare against, which do not exist yet.
+- *Later:* the flag beside every audio button and the approve/reject page were
+  folded into "Something wrong?", which takes any complaint, about a recording
+  or the text, and can flag it for `/review` instead of fixing it at once. A
+  recording marked fine there is approved and pinned as before, and a remake
+  still keeps the rejected take.
 
 ---
 
