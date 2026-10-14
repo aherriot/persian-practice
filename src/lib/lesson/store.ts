@@ -302,6 +302,8 @@ export type ThemeSummary = {
   total: number;
   learned: number;
   due: number;
+  /** The learner's own: their added words, or what the app wrote for them. Not a topic to choose. */
+  personal: boolean;
 };
 
 /** `knowledge` spares the query when the caller has already loaded it. */
@@ -333,6 +335,7 @@ export async function themeSummaries(
       total: components.size,
       learned: mine.length,
       due: mine.filter((key) => known.get(key)!.dueAt <= now).length,
+      personal: theme.ownerId !== null,
     };
   });
 }
