@@ -29,7 +29,8 @@
     "spike:ttslatency": "tsx spike/tts-latency.ts",
     "spike:conversation": "tsx spike/conversation-probe.ts",
     "spike:listener": "tsx spike/listener-probe.ts",
-    "spike:avowel": "tsx spike/a-vowel-probe.ts"
+    "spike:avowel": "tsx spike/a-vowel-probe.ts",
+    "spike:gh": "tsx spike/gh-probe.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",
