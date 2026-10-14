@@ -10,6 +10,7 @@ import { lessonOutbox, type OutboxStatus } from "@/lib/lesson/outbox";
 import { exerciseName, type ChoiceExercise, type Exercise, type SessionPlan, type TilesExercise } from "@/lib/lesson/types";
 import { normalizeForCompare } from "@/lib/normalize";
 import { SentenceView, SpeakButton, shown } from "./Persian";
+import { NewHeader, TaskHeader } from "./Task";
 
 const PRELOAD_AHEAD = 3;
 
@@ -216,7 +217,7 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
       <div key={exercise.key} className="flex flex-1 flex-col gap-6">
         {exercise.type === "intro-lexeme" && (
           <>
-            <Eyebrow>New word</Eyebrow>
+            <NewHeader exercise={exercise} />
             <div className="flex flex-col items-center gap-3 rounded-lg border border-ink/15 bg-sand px-6 py-8 text-center shadow-[inset_0_4px_8px_-6px_rgba(42,29,22,0.35)]">
               <p dir="rtl" lang="fa" className="text-5xl leading-[1.9] text-ink">
                 {exercise.lexeme.voc}
@@ -241,7 +242,7 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
 
         {exercise.type === "intro-pattern" && (
           <>
-            <Eyebrow>New grammar</Eyebrow>
+            <NewHeader exercise={exercise} />
             <div className="rounded-lg border border-ink/15 bg-sand px-6 py-6 shadow-[inset_0_4px_8px_-6px_rgba(42,29,22,0.35)]">
               <h2 className="text-xl font-semibold text-ink">{exercise.pattern.title}</h2>
               <p className="mt-2 text-sm leading-relaxed text-ink/75">{exercise.pattern.summary}</p>
@@ -381,20 +382,6 @@ function Example({ exercise }: { exercise: Exercise }) {
   );
 }
 
-const CHOICE_PROMPT: Record<ChoiceExercise["variant"], string> = {
-  listen: "What did you hear?",
-  "hear-word": "What does the word you hear mean?",
-  "hear-pick": "Which word did you hear?",
-  read: "What does this mean?",
-  "read-word": "What does this word mean?",
-  pronounce: "How is this word said?",
-  "reply-heard": "What would you say back?",
-  "reply-read": "What would you say back?",
-  transform: "Change the word to fit",
-  "pick-word": "Which word means this?",
-  cloze: "Which word is missing?",
-};
-
 /** Exercises answered by picking Persian rather than English. */
 const PERSIAN_OPTIONS: ReadonlySet<ChoiceExercise["variant"]> = new Set(["hear-pick", "pick-word", "cloze", "transform", "reply-heard", "reply-read"]);
 
@@ -410,6 +397,7 @@ function Choice({
   const [picked, setPicked] = useState<number | null>(null);
   const done = answered !== null;
   const persianOptions = PERSIAN_OPTIONS.has(exercise.variant);
+  const isReply = exercise.variant === "reply-heard" || exercise.variant === "reply-read";
 
   const pick = useCallback(
     (i: number) => {
@@ -433,49 +421,57 @@ function Choice({
 
   return (
     <>
-      <Eyebrow>{exercise.instruction ?? CHOICE_PROMPT[exercise.variant]}</Eyebrow>
+      <TaskHeader exercise={exercise} />
 
-      <div className="flex min-h-28 flex-col items-center justify-center gap-3 text-center">
-        {(exercise.variant === "listen" || exercise.variant === "reply-heard") && (
-          <SpeakButton url={exercise.sentence.audioUrl} label="Hear it again" large />
-        )}
-        {(exercise.variant === "hear-word" || exercise.variant === "hear-pick") && exercise.wordAudioUrl && (
-          <SpeakButton url={exercise.wordAudioUrl} label="Hear it again" large />
-        )}
-        {/* Reading is tested with nothing to lean on: no sound, and no pronunciation behind a tap. */}
-        {(exercise.variant === "read" || exercise.variant === "reply-read") && (
-          <SentenceView sentence={exercise.sentence} revealMeaning={false} hints={false} />
-        )}
-        {exercise.variant === "read-word" && token && (
-          <p dir="rtl" lang="fa" className="text-5xl leading-[1.9] text-ink">
-            {shown(token)}
-          </p>
-        )}
-        {/* As a native reader meets it: no vowel marks, whatever the learner is usually shown. */}
-        {exercise.variant === "pronounce" && token && (
-          <p dir="rtl" lang="fa" className="text-5xl leading-[1.9] text-ink">
-            {token.fa}
-          </p>
-        )}
-        {exercise.variant === "pick-word" && token && <p className="text-2xl font-semibold text-ink">{token.gloss}</p>}
-        {exercise.variant === "transform" && exercise.base && (
-          <>
-            <p className="text-base font-medium text-ink">{exercise.sentence.english}</p>
-            <p dir="rtl" lang="fa" className="rounded-md border border-ink/20 bg-sand px-3 py-1 text-2xl leading-[1.8] text-ink">
-              {shown(exercise.base)}
+      {isReply ? (
+        <TheySay>
+          {exercise.variant === "reply-heard" ? (
+            <SpeakButton url={exercise.sentence.audioUrl} label="Hear it again" />
+          ) : (
+            <SentenceView sentence={exercise.sentence} revealMeaning={false} hints={false} className="text-2xl" />
+          )}
+        </TheySay>
+      ) : (
+        <div className="flex min-h-28 flex-col items-center justify-center gap-3 text-center">
+          {exercise.variant === "listen" && <SpeakButton url={exercise.sentence.audioUrl} label="Hear it again" large />}
+          {(exercise.variant === "hear-word" || exercise.variant === "hear-pick") && exercise.wordAudioUrl && (
+            <SpeakButton url={exercise.wordAudioUrl} label="Hear it again" large />
+          )}
+          {/* Reading is tested with nothing to lean on: no sound, and no pronunciation behind a tap. */}
+          {exercise.variant === "read" && <SentenceView sentence={exercise.sentence} revealMeaning={false} hints={false} />}
+          {exercise.variant === "read-word" && token && (
+            <p dir="rtl" lang="fa" className="text-5xl leading-[1.9] text-ink">
+              {shown(token)}
             </p>
-            <SentenceView sentence={exercise.sentence} revealMeaning={false} blankIndex={exercise.tokenIndex} />
-          </>
-        )}
-        {exercise.variant === "cloze" && (
-          <>
-            <p className="text-base font-medium text-ink">{exercise.sentence.english}</p>
-            <SentenceView sentence={exercise.sentence} revealMeaning={false} blankIndex={exercise.tokenIndex} />
-          </>
-        )}
-      </div>
+          )}
+          {/* As a native reader meets it: no vowel marks, whatever the learner is usually shown. */}
+          {exercise.variant === "pronounce" && token && (
+            <p dir="rtl" lang="fa" className="text-5xl leading-[1.9] text-ink">
+              {token.fa}
+            </p>
+          )}
+          {exercise.variant === "pick-word" && token && <p className="text-2xl font-semibold text-ink">{token.gloss}</p>}
+          {exercise.variant === "transform" && exercise.base && (
+            <>
+              <p className="text-base font-medium text-ink">{exercise.sentence.english}</p>
+              <p dir="rtl" lang="fa" className="rounded-md border border-ink/20 bg-sand px-3 py-1 text-2xl leading-[1.8] text-ink">
+                {shown(exercise.base)}
+              </p>
+              <SentenceView sentence={exercise.sentence} revealMeaning={false} blankIndex={exercise.tokenIndex} />
+            </>
+          )}
+          {exercise.variant === "cloze" && (
+            <>
+              <p className="text-base font-medium text-ink">{exercise.sentence.english}</p>
+              <SentenceView sentence={exercise.sentence} revealMeaning={false} blankIndex={exercise.tokenIndex} />
+            </>
+          )}
+        </div>
+      )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      {isReply && <p className="-mb-3 text-right text-xs font-semibold uppercase tracking-widest text-ink/50">You say</p>}
+      {/* Replies are whole sentences: one to a line, like the next turn in a conversation. */}
+      <div className={`grid gap-3 ${isReply ? "justify-items-end" : "sm:grid-cols-2"}`}>
         {exercise.options.map((option, i) => {
           const isAnswer = i === exercise.answer;
           const state = !done ? "idle" : isAnswer ? "right" : i === picked ? "wrong" : "muted";
@@ -485,7 +481,7 @@ function Choice({
               type="button"
               disabled={done}
               onClick={() => pick(i)}
-              className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-turquoise-dark ${
+              className={`flex items-center gap-3 border px-4 py-3 ${isReply ? "w-full max-w-[85%] rounded-2xl rounded-br-sm" : "rounded-lg"} text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-turquoise-dark ${
                 state === "idle"
                   ? "border-ink/20 bg-sand hover:border-cobalt hover:bg-paper"
                   : state === "right"
@@ -535,7 +531,7 @@ function Tiles({
 
   return (
     <>
-      <Eyebrow>{exercise.variant === "dictation" ? "Build what you hear" : "Build this sentence"}</Eyebrow>
+      <TaskHeader exercise={exercise} />
       {exercise.variant === "dictation" ? (
         <div className="flex justify-center">
           <SpeakButton url={exercise.sentence.audioUrl} label="Hear it again" large />
@@ -587,5 +583,15 @@ function Tiles({
         </Button>
       )}
     </>
+  );
+}
+
+/** What was said to the learner, in a speech bubble, so it does not look like something to translate. */
+function TheySay({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <p className="text-xs font-semibold uppercase tracking-widest text-ink/50">They say</p>
+      <div className="flex min-h-16 max-w-[85%] items-center rounded-2xl rounded-bl-sm border border-cobalt/30 bg-cobalt/5 px-4 py-2">{children}</div>
+    </div>
   );
 }
