@@ -308,6 +308,26 @@ export const corrections = pgTable(
   (t) => [index().on(t.kind, t.refId)],
 );
 
+// Something a person has said is wrong with a word or a sentence, waiting for
+// someone to fix it or to decide nothing is (src/lib/lesson/flags.ts). Fixing
+// the thing resolves every open flag on it.
+export const flags = pgTable(
+  "Flag",
+  {
+    id: id(),
+    kind: text("kind").$type<"lexeme" | "sentence">().notNull(),
+    refId: text("refId").notNull(),
+    note: text("note").notNull(),
+    userId: text("userId")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+    resolvedAt: timestamp("resolvedAt", { precision: 3 }),
+    outcome: text("outcome").$type<"fixed" | "dismissed">(),
+  },
+  (t) => [index().on(t.kind, t.refId)],
+);
+
 // --- Background work ---
 //
 // Slow work done for a learner outside any request: writing new sentences and
