@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AudioReviewProvider } from "@/components/AudioReview";
+import { ReviewerProvider } from "@/components/Reviewer";
 import { canReviewAudio } from "@/lib/auth/reviewer";
 import { requireUser } from "@/lib/auth/session";
 import { loadSession } from "@/lib/lesson/session";
@@ -50,8 +50,8 @@ export default async function WeakPracticePage() {
     review: weak,
   });
   return (
-    <AudioReviewProvider enabled={canReviewAudio(user.email)}>
+    <ReviewerProvider enabled={canReviewAudio(user.email)}>
       <Session plan={plan} href="/practice/weak" userId={user.id} />
-    </AudioReviewProvider>
+    </ReviewerProvider>
   );
 }
