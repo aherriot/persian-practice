@@ -1,6 +1,6 @@
 import { del, get, list, put } from "@vercel/blob";
 import { and, eq, isNull } from "drizzle-orm";
-import { VOICE_INSTRUCTION, type ClipSpec } from "@/lib/audio-key";
+import { isStale, spokenText, VOICE_INSTRUCTION, type ClipSpec } from "@/lib/audio-key";
 import { listen, ListenerReplyError } from "@/lib/audio-verify";
 import { db } from "@/lib/db";
 import { audioClips, audioReviews } from "@/lib/db/schema";
@@ -68,7 +68,7 @@ async function synthesise(text: string, instructions: string): Promise<Buffer> {
   return Buffer.from(await speech.arrayBuffer());
 }
 
-type Candidate = { audio: Buffer; instructions: string; heard: string; faults: number; attempts: number };
+type Candidate = { audio: Buffer; instructions: string; spoken: string; heard: string; faults: number; attempts: number };
 
 async function judge(audio: Buffer, expected: string[]): Promise<{ heard: string; faults: number }> {
   let last = { heard: "", faults: 0 };
@@ -91,12 +91,13 @@ async function judge(audio: Buffer, expected: string[]): Promise<{ heard: string
 
 async function produce(clip: { text: string; expected: string }): Promise<Candidate> {
   const expected = clip.expected.split(/\s+/);
+  const spoken = spokenText(clip.text);
   let best: Candidate | null = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const audio = await synthesise(clip.text, VOICE_INSTRUCTION);
+    const audio = await synthesise(spoken, VOICE_INSTRUCTION);
     const result = await judge(audio, expected);
     if (!best || result.faults < best.faults) {
-      best = { audio, instructions: VOICE_INSTRUCTION, heard: result.heard, faults: result.faults, attempts: attempt };
+      best = { audio, instructions: VOICE_INSTRUCTION, spoken, heard: result.heard, faults: result.faults, attempts: attempt };
     }
     best.attempts = attempt;
     if (result.faults === 0) break;
@@ -116,13 +117,15 @@ async function produce(clip: { text: string; expected: string }): Promise<Candid
 type Take = Candidate & { carrier: string | null };
 
 /** The stored audio of a verified sentence that has the word: one a person approved if there is one, else the shortest. */
-async function carrierFor(clip: { expected: string; carrier: string | null }): Promise<Take | null> {
+async function carrierFor(clip: { text: string; expected: string; carrier: string | null }): Promise<Take | null> {
   const sentences = await db
     .select()
     .from(audioClips)
     .where(and(eq(audioClips.status, "verified"), isNull(audioClips.carrier)));
   const length = (expected: string) => expected.split(/\s+/).length;
   const candidates = sentences
+    // Not one made the old way: its audio would be handed on as if it were new.
+    .filter((sentence) => !isStale(sentence))
     .filter((sentence) => length(sentence.expected) > 1 && sentence.expected.split(/\s+/).includes(clip.expected))
     .sort(
       (a, b) =>
@@ -137,6 +140,8 @@ async function carrierFor(clip: { expected: string; carrier: string | null }): P
       return {
         audio,
         instructions: sentence.instructions ?? VOICE_INSTRUCTION,
+        // The sentence was made the current way, so the word counts as made that way too.
+        spoken: spokenText(clip.text),
         heard: sentence.heard ?? "",
         faults: 0,
         attempts: 0,
@@ -155,10 +160,6 @@ async function take(clip: { text: string; expected: string; carrier: string | nu
   if (alone && (alone.faults === 0 || !lone)) return { ...alone, carrier: null };
   return (await carrierFor(clip)) ?? { ...(alone ?? (await produce(clip))), carrier: null };
 }
-
-/** Made with an instruction the pipeline no longer uses. */
-export const isStale = (clip: { instructions: string | null }) =>
-  clip.instructions !== null && clip.instructions !== VOICE_INSTRUCTION;
 
 async function readStored(hash: string): Promise<Buffer | null> {
   const stored = await get(blobPath(hash), { access: "private" });
@@ -206,6 +207,7 @@ export function makeClipAudio(hash: string, { replace = false } = {}): Promise<B
           status: made.faults === 0 ? "verified" : "flagged",
           heard: made.heard,
           instructions: made.instructions,
+          spoken: made.spoken !== clip.text ? made.spoken : null,
           attempts: made.attempts,
           carrier: made.carrier,
           approvedAt: null,

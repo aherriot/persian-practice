@@ -10,7 +10,8 @@
  */
 import "./load-env.ts";
 
-import { deleteOrphanedAudio, isStale, makeClipAudio } from "../src/lib/audio-store.ts";
+import { isStale } from "../src/lib/audio-key.ts";
+import { deleteOrphanedAudio, makeClipAudio } from "../src/lib/audio-store.ts";
 import { db } from "../src/lib/db/index.ts";
 import { audioClips } from "../src/lib/db/schema.ts";
 import { createThrottle, isDailyQuota, isRateLimit, sleep } from "../src/lib/throttle.ts";
@@ -28,7 +29,7 @@ async function main() {
   const retryFlagged = process.argv.includes("--retry");
 
   const registered = await db.select().from(audioClips);
-  // A clip made with an instruction the pipeline no longer uses is made again.
+  // A clip made with an instruction or spelling the pipeline no longer uses is made again.
   // One a person has approved is left alone whatever else is true of it.
   const todo = registered.filter(
     (clip) =>
@@ -37,7 +38,9 @@ async function main() {
   console.log(`Making audio for ${todo.length} of ${registered.length} clips…`);
 
   const gate = createThrottle(MIN_INTERVAL_MS);
-  const queue = [...todo];
+  // Sentences first: a word that cannot be said alone borrows the audio of one made the current way.
+  const words = (clip: { expected: string }) => clip.expected.split(/\s+/).length;
+  const queue = [...todo].sort((a, b) => Number(words(a) === 1) - Number(words(b) === 1));
   const failed: string[] = [];
   let done = 0;
   let aborted = false;
@@ -85,7 +88,7 @@ async function main() {
 
   // A remake that failed the listener leaves the old audio in place; say so.
   for (const clip of after.filter((clip) => isStale(clip) && !clip.approvedAt)) {
-    console.log(`  kept     ${clip.expected}  — old audio from a retired instruction; no remake passed  (${clip.text})`);
+    console.log(`  kept     ${clip.expected}  — old audio, made a way no longer used; no remake passed  (${clip.text})`);
   }
 
   const orphans = await deleteOrphanedAudio();

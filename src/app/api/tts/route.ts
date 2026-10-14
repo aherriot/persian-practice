@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { errorResponse, openai, requireApiKey } from "@/lib/openai";
+import { spokenText } from "@/lib/audio-key";
 import { SELECTED_TTS } from "@/lib/tts-provider";
 
 export const runtime = "nodejs";
@@ -49,7 +50,7 @@ export async function POST(request: Request): Promise<Response> {
     const speech = await openai.audio.speech.create({
       model: "gpt-4o-mini-tts",
       voice: SELECTED_TTS.voice,
-      input: text,
+      input: spokenText(text),
       response_format: format,
       instructions: VOICE_INSTRUCTION,
     });
