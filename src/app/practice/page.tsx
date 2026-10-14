@@ -7,9 +7,10 @@ import { loadSession } from "@/lib/lesson/session";
 import { Session } from "../learn/[themeId]/Session";
 
 /**
- * Practice across every theme at once: whatever is due comes first, wherever
- * it was learned, and new material continues from the earliest unfinished
- * theme. Weighted towards review, since that is what this mode is for.
+ * Practice across every theme at once: what the learner keeps getting wrong
+ * first, then whatever else is due, wherever it was learned, and new material
+ * from the earliest unfinished theme — the learner's own words come first.
+ * Weighted towards review.
  */
 export default async function PracticePage() {
   const user = await requireUser();

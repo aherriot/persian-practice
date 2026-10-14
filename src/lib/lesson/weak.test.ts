@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { buildTheme } from "../content/build.ts";
 import { SHOPPING } from "../content/shopping.ts";
 import { applyAnswer } from "./grade.ts";
-import { componentsOf, planSession } from "./plan.ts";
+import { componentsOf, dueTargets, planSession } from "./plan.ts";
 import { evenly, targetKey, type KnowledgeState, type SkillState } from "./types.ts";
 import { weakTargets, weaknessOf } from "./weak.ts";
 
@@ -68,7 +68,7 @@ function knowing(n: number) {
   return map;
 }
 
-test("a session can be about chosen things that are not due, in the order asked for", () => {
+test("weak things are reviewed even when nothing is due, weakest first", () => {
   const knowledge = knowing(8);
   knowledge.set("lexeme:darim", state({ lapses: 2 }));
   knowledge.set("lexeme:havij", state({ lapses: 1, repetitions: 1 }));
@@ -76,7 +76,7 @@ test("a session can be about chosen things that are not due, in the order asked 
   // Nothing is due, so an ordinary session reviews nothing.
   assert.equal(planSession(content, knowledge, { now: NOW, seed: 1, maxNew: 0 }).reviewCount, 0);
 
-  const plan = planSession(content, knowledge, { now: NOW, seed: 1, maxNew: 0, review: weakTargets(knowledge) });
+  const plan = planSession(content, knowledge, { now: NOW, seed: 1, maxNew: 0, weak: weakTargets(knowledge) });
   assert.equal(plan.newCount, 0);
   assert.equal(plan.reviewCount, 2);
   const graded = plan.exercises.flatMap((e) => ((e.type === "choice" || e.type === "tiles") && e.primary ? [e.primary.id] : []));
@@ -84,11 +84,23 @@ test("a session can be about chosen things that are not due, in the order asked 
   assert.ok(plan.exercises.every((e) => e.type !== "intro-lexeme" && e.type !== "intro-pattern"));
 });
 
-test("things asked for that the learner has not met are left out, and the session is capped", () => {
+test("weak things the learner has not met are left out, and the session is capped", () => {
   const knowledge = knowing(8);
   const all = [...knowledge.keys()];
-  const plan = planSession(content, knowledge, { now: NOW, seed: 1, maxNew: 0, maxReview: 3, review: ["lexeme:never-met", ...all] });
+  const plan = planSession(content, knowledge, { now: NOW, seed: 1, maxNew: 0, maxReview: 3, weak: ["lexeme:never-met", ...all] });
   assert.equal(plan.reviewCount, 3);
+});
+
+test("weak things that are due come before the rest of what is due", () => {
+  const knowledge = knowing(8);
+  const overdue = new Date(NOW.getTime() - 3 * DAY);
+  const [first, second] = [...knowledge.keys()];
+  for (const key of [first, second]) knowledge.set(key, state({ repetitions: 4, dueAt: overdue }));
+  // The second is due just as long, but has been missed.
+  knowledge.set(second, state({ repetitions: 1, lapses: 1, dueAt: overdue }));
+  const order = dueTargets(knowledge, NOW, 10, weakTargets(knowledge)).map((d) => d.key);
+  assert.equal(order[0], second);
+  assert.ok(order.indexOf(first) > 0);
 });
 
 test("practising a weak word early does not move it on, but getting it wrong still counts", () => {

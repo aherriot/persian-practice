@@ -3,8 +3,8 @@ import { SKILLS, type KnowledgeState, type SkillState } from "./types";
 
 /**
  * What counts as a weak word or grammar point. This is the one definition:
- * the progress page's "struggling" list, the dashboard's count and the
- * weak-words session all read it from here.
+ * the progress page's "struggling" list, the dashboard's count and practice,
+ * which reviews weak things first (plan.ts, `dueTargets`), all read it from here.
  *
  * Something is weak if the learner has got it wrong at least once and one of
  * these is still true:
@@ -31,8 +31,6 @@ export type Weakness = "missed" | "recovering" | "hard";
 export const HARD_DIFFICULTY = 8;
 /** …until the gap between its reviews has grown to this many days. */
 export const SETTLED_INTERVAL_DAYS = 21;
-/** How many weak things one session takes on, the weakest first. */
-export const WEAK_SESSION = 10;
 
 /** One skill's weakness. */
 export function weaknessOf(state: Pick<SkillState, "repetitions" | "lapses" | "difficulty" | "intervalDays">): Weakness | null {

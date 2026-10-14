@@ -18,6 +18,7 @@ import {
   wordsOf,
 } from "./store";
 import type { SessionPlan } from "./types";
+import { weakTargets } from "./weak";
 
 /** Sentences fetched for each thing due, so a review can avoid one already used this session. */
 const PER_REVIEW = 6;
@@ -66,7 +67,10 @@ export async function loadSession(
     loadConfusions(userId, now),
   ]);
 
-  const due = [...new Set(dueTargets(known, now, maxReview, opts.review).map((item) => item.key))];
+  // What the learner keeps getting wrong comes first in practice across the
+  // course. Not in a theme's session: those things may be in other themes.
+  const weak = opts.weak ?? (themeId ? [] : weakTargets(known));
+  const due = [...new Set(dueTargets(known, now, maxReview, weak).map((item) => item.key))];
   const dueIds = (kind: "lexeme" | "pattern") =>
     textArray(due.filter((key) => key.startsWith(`${kind}:`)).map((key) => key.slice(kind.length + 1)));
 
@@ -186,6 +190,7 @@ export async function loadSession(
       ...opts,
       maxNew,
       maxReview,
+      weak,
       seen: new Map(poolRows.map((row) => [row.sentence.id, row.seen])),
       distractors,
       alternates,

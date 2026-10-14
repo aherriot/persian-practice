@@ -72,7 +72,7 @@ async function addSentence(id: string, lexemeIds: string[], options: SentenceOpt
  * means due by ear; reading and producing are a month off, so each word comes
  * up for review once.
  */
-async function know(userId: string, lexemeIds: string[], { dueInDays = -1, repetitions = 1 } = {}) {
+async function know(userId: string, lexemeIds: string[], { dueInDays = -1, repetitions = 1, lapses = 0 } = {}) {
   await db.insert(knowledge).values(
     lexemeIds.flatMap((refId) =>
       SKILLS.map((skill) => ({
@@ -81,6 +81,7 @@ async function know(userId: string, lexemeIds: string[], { dueInDays = -1, repet
         refId,
         skill,
         repetitions,
+        lapses,
         dueAt: new Date(NOW.getTime() + (skill === "listening" ? dueInDays : 30) * DAY),
       })),
     ),
@@ -366,13 +367,15 @@ test("how often a sentence was answered is counted for this learner only", async
 
 // --- Sessions about chosen things ---
 
-test("a session asked to review chosen words reviews those, due or not, and nothing else", async () => {
+test("practice brings up what the learner keeps getting wrong, due or not", async () => {
   await addCourse();
-  // Nothing is due for a week.
-  await know(ME, ["apple", "pear", "plum"], { dueInDays: 7 });
+  // Nothing is due for a week, and plum has been missed.
+  await know(ME, ["apple", "pear"], { dueInDays: 7 });
+  await know(ME, ["plum"], { dueInDays: 7, lapses: 1 });
   for (const seed of SEEDS) {
-    assert.equal((await loadSession(ME, { now: NOW, seed, maxNew: 0 })).reviewCount, 0);
-    const plan = await loadSession(ME, { now: NOW, seed, maxNew: 0, review: ["lexeme:plum", "lexeme:never-met"] });
+    // Not in a theme's session: the weak thing may belong to another theme.
+    assert.equal((await loadSession(ME, { now: NOW, seed, maxNew: 0, themeId: "fruit" })).reviewCount, 0);
+    const plan = await loadSession(ME, { now: NOW, seed, maxNew: 0 });
     assert.deepEqual(reviewed(plan), ["plum"]);
     assert.deepEqual(introduced(plan), []);
     // Plum only appears with apple and pear, which are known: that is the sentence used.
