@@ -10,7 +10,8 @@ import type { TopUpOptions } from "./generate";
  *   learner is running out ("expand"), then fresh sentences to practise what
  *   they know ("sentences").
  * - "word", queued when a learner adds a word of their own: its audio
- *   ("clip"), then sentences that use it ("sentences").
+ *   ("clip"), then lessons that use it at the learner's level, with any word
+ *   it needs brought in on the ladder ("sentences"; word-lessons.ts).
  *
  * Writing sentences is the same three moves in every phase: the author drafts
  * a batch, a reviewer thins it, and then each survivor is given audio and
@@ -34,10 +35,9 @@ export type Stages = {
   storePractice(userId: string, candidate: Candidate): Promise<unknown>;
   review(candidates: Candidate[]): Promise<{ kept: Candidate[] }>;
   makeWordClip(userId: string, lexemeId: string): Promise<unknown>;
+  draftLessons(userId: string, lexemeId: string): Promise<Draft>;
+  storeLesson(userId: string, candidate: Candidate): Promise<unknown>;
 };
-
-/** How many sentences are written around a word the learner has just added. */
-const WORD_SENTENCES = 4;
 
 type Progress = Pick<Job, "kind" | "state">;
 
@@ -66,7 +66,9 @@ export async function prepareStep(job: Job, stages: Stages): Promise<PrepareStat
     const draft =
       phase === "expand"
         ? await stages.draftFrontier(job.userId)
-        : await stages.draftPractice(job.userId, lexemeId ? { force: true, focus: [lexemeId], count: WORD_SENTENCES } : {});
+        : lexemeId
+          ? await stages.draftLessons(job.userId, lexemeId)
+          : await stages.draftPractice(job.userId, {});
     return draft.candidates.length > 0 ? { phase, batch: { candidates: draft.candidates, reviewed: false } } : after(phase);
   }
 
@@ -78,6 +80,7 @@ export async function prepareStep(job: Job, stages: Stages): Promise<PrepareStat
   // A sentence whose audio does not pass is dropped, like any other rejection:
   // only an error (the speech service being down, say) leaves it to be tried again.
   const [candidate, ...rest] = batch.candidates;
-  await (phase === "expand" ? stages.storeFrontier : stages.storePractice)(job.userId, candidate);
+  const store = phase === "expand" ? stages.storeFrontier : lexemeId ? stages.storeLesson : stages.storePractice;
+  await store(job.userId, candidate);
   return rest.length > 0 ? { phase, batch: { candidates: rest, reviewed: true } } : after(phase);
 }

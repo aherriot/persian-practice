@@ -27,6 +27,8 @@ function stand(overrides: Partial<Stages> = {}) {
     storePractice: async (_user, c) => calls.push(`storePractice ${c.sentence.english}`),
     review: async (candidates) => (calls.push("review"), { kept: candidates }),
     makeWordClip: async (_user, lexemeId) => calls.push(`makeWordClip ${lexemeId}`),
+    draftLessons: async (_user, lexemeId) => (calls.push(`draftLessons ${lexemeId}`), drafted("lesson one", "lesson two")),
+    storeLesson: async (_user, c) => calls.push(`storeLesson ${c.sentence.english}`),
     ...overrides,
   };
   return { stages, calls };
@@ -95,15 +97,10 @@ test("a phase with nothing to write is passed over", async () => {
   assert.deepEqual(states, [{ phase: "sentences", batch: null }, { phase: "sentences", batch: { candidates: ["one", "two", "three"].map(candidate), reviewed: false } }, null]);
 });
 
-test("a word job makes the word's audio, then sentences around that word", async () => {
+test("a word job makes the word's audio, then lessons around that word", async () => {
   const { stages, calls } = stand();
   await runToEnd(job("word", null, { lexemeId: "own-apple" }), stages);
-  assert.deepEqual(calls.slice(0, 3), [
-    "makeWordClip own-apple",
-    'draftPractice {"force":true,"focus":["own-apple"],"count":4}',
-    "review",
-  ]);
-  assert.ok(!calls.includes("draftFrontier"));
+  assert.deepEqual(calls, ["makeWordClip own-apple", "draftLessons own-apple", "review", "storeLesson lesson one", "storeLesson lesson two"]);
 });
 
 test("drafting and reviewing are the slow steps; audio for one sentence or word is not", () => {

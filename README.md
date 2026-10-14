@@ -106,8 +106,8 @@ Auth.js magic-link sign-in, and a private Vercel Blob store for audio.
 
 ```
 src/app/
-  dashboard/  learn/[themeId]/  practice/    themes, a themed session, practise everything
-  progress/   reference/        review/      where you stand, the dictionary, flags to fix
+  dashboard/  practice/  learn/[themeId]/     the start page, practise everything, focus on a topic
+  progress/   reference/ add-word/  review/  where you stand, the dictionary, a new word, flags
   api/                                       answers, audio, own words, speech
 src/lib/
   content/           the hand-written themes, validated before they are seeded
@@ -120,6 +120,7 @@ src/lib/
     assemble.ts        builds a sentence from the author's draft, or rejects it
     generate.ts        more practice sentences from words already known
     expand.ts          new words and grammar once the curated course runs out
+    word-lessons.ts    lessons at the learner's level for a word they added
     prepare.ts         that writing as a job, one resumable step at a time
     correct.ts         fixes a word or sentence from a description of what is wrong
     flags.ts           what has been flagged as wrong, and the review list
@@ -141,6 +142,18 @@ requested, so nothing is generated and no model is called while a learner is
 answering. New material comes off a ladder in order; a review is always set in a
 sentence made entirely of words the learner has met; short-vowel marks fade from
 a word once it has survived a few reviews.
+
+**There is one course and one way through it.** "Practise" reviews what the
+learner keeps getting wrong first, then whatever else is due, then teaches the
+next thing on the ladder: words they added themselves, then the curated topics
+in order, then what the app writes once those run out. A topic can be opened on
+its own to focus on it, but nothing has to be chosen.
+
+**A word the learner adds becomes lessons at their level.** It is met alone at
+the start of their next session. Then the author writes sentences that use it,
+plain for a beginner and as rich as their grammar allows for someone further on,
+and adds the few words it needs to be useful: "football" brings in "I play"
+(*futbâl bâzi mikonam*), each on the ladder, one new thing at a time.
 
 **The language model writes content, never judges an answer.** When a learner
 runs low on sentences or on new material, it drafts more — as word ids and form

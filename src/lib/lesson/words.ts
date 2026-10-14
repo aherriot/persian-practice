@@ -18,7 +18,7 @@ export type WordEntry = {
   note: string | null;
 };
 
-const myWordsThemeId = (userId: string) => `my-words-${userId}`;
+export const myWordsThemeId = (userId: string) => `my-words-${userId}`;
 const PERSIAN = /^[؀-ۿ‌\s]+$/;
 
 /** Problems that stop an entry being saved. Empty = fine. */
