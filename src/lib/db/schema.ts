@@ -40,12 +40,6 @@ export const users = pgTable("User", {
   email: text("email").unique(),
   emailVerified: timestamp("emailVerified", { precision: 3, mode: "date" }),
   image: text("image"),
-  // The daily reminder email (src/lib/reminders.ts). Off until the learner asks for it.
-  reminders: boolean("reminders").notNull().default(false),
-  // IANA zone, e.g. "America/Toronto", taken from the browser when reminders
-  // are turned on: "has not practised today" means the learner's own day.
-  timeZone: text("timeZone"),
-  lastRemindedAt: timestamp("lastRemindedAt", { precision: 3 }),
   createdAt: createdAt(),
 });
 

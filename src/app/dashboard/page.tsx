@@ -6,8 +6,6 @@ import { openFlagCount } from "@/lib/lesson/flags";
 import { HISTORY_DAYS, loadActivityHours } from "@/lib/lesson/history";
 import { loadKnowledge, themeSummaries } from "@/lib/lesson/store";
 import { weakTargets } from "@/lib/lesson/weak";
-import { loadReminderSetting } from "@/lib/reminders";
-import { Reminders } from "./Reminders";
 import { actionClass } from "./styles";
 import { Today } from "./Today";
 
@@ -16,10 +14,9 @@ export default async function DashboardPage() {
   const now = new Date();
   // Counted from what the learner has met rather than added up over themes, which share words.
   const reviewer = canReviewAudio(user.email);
-  const [knowledge, hours, reminders, flagged] = await Promise.all([
+  const [knowledge, hours, flagged] = await Promise.all([
     loadKnowledge(user.id),
     loadActivityHours(user.id, now),
-    loadReminderSetting(user.id),
     openFlagCount({ id: user.id, shared: reviewer }),
   ]);
   const themes = await themeSummaries(user.id, now, knowledge);
@@ -56,7 +53,6 @@ export default async function DashboardPage() {
             Look up a word or grammar note
           </Link>
         </div>
-        {user.email && <Reminders enabled={reminders} email={user.email} />}
       </Today>
 
       <section className="flex flex-col gap-4">
