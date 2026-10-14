@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useSyncExternalStore } from "react";
 import { dailyActivity, type ActivityHour } from "@/lib/lesson/activity";
 import { actionClass } from "./styles";
 
@@ -9,7 +9,9 @@ const noop = () => () => {};
 
 /**
  * What the dashboard leads with: the streak, whether today is done, what is
- * due, and the one thing to do about it.
+ * due, and the one thing to do about it: practise. A session reviews what the
+ * learner keeps getting wrong first, then whatever else is due, then teaches
+ * something new, so there is one button for all of it.
  *
  * The streak and "today" are worked out in the browser, as on the progress
  * page: a day is the learner's own, and the server does not know their time
@@ -22,14 +24,15 @@ export function Today({
   hours,
   historyDays,
   due,
+  weak,
   met,
-  children,
 }: {
   hours: ActivityHour[];
   historyDays: number;
   due: number;
+  /** Things the learner keeps getting wrong; practice starts with these. */
+  weak: number;
   met: number;
-  children?: ReactNode;
 }) {
   // Nothing on the server or during hydration, so the two cannot disagree about what day it is.
   const mounted = useSyncExternalStore(noop, () => true, () => false);
@@ -71,24 +74,33 @@ export function Today({
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center justify-between gap-3 border-t border-ink/10 pt-4">
         <p className="text-sm text-ink/75">
-          {due > 0 ? (
+          {met === 0 ? (
+            "Nothing learned yet. Your first session starts at the beginning."
+          ) : due > 0 || weak > 0 ? (
             <>
-              <span className="font-semibold text-ink">{due}</span> {due === 1 ? "thing is" : "things are"} due for review.
+              {due > 0 && (
+                <>
+                  <span className="font-semibold text-ink">{due}</span> to review
+                </>
+              )}
+              {due > 0 && weak > 0 && ", "}
+              {weak > 0 && (
+                <>
+                  <span className="font-semibold text-ink">{weak}</span> you have been getting wrong
+                </>
+              )}
+              . A session starts with those, then teaches something new.
             </>
-          ) : met === 0 ? (
-            "Nothing learned yet. Start with the first theme below, or dive in here."
           ) : (
-            "Nothing is due. A session will add something new."
+            "Nothing to review. A session teaches something new."
           )}
         </p>
         <Link href="/practice" className={`shrink-0 ${actionClass}`}>
-          {due > 0 ? `Review ${due} due` : "Practise"}
+          {met === 0 ? "Start" : "Practise"}
         </Link>
       </div>
-
-      {children}
     </section>
   );
 }

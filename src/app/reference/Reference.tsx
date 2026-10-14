@@ -8,7 +8,7 @@ import { Input } from "@/components/Input";
 import { unlockAudio } from "@/lib/audio-client";
 import { normalizeForCompare } from "@/lib/normalize";
 import { SpeakButton } from "../learn/[themeId]/Persian";
-import { AddWord } from "./AddWord";
+import { AddWord } from "@/components/AddWord";
 
 export type ReferenceExample = {
   id: string;

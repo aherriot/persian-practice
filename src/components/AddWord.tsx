@@ -21,9 +21,13 @@ async function post(body: unknown): Promise<{ ok: boolean; data: Record<string, 
   }
 }
 
-/** Add a word met outside the app: type it, check the drafted entry, save. */
-export function AddWord({ onAdded }: { onAdded: () => void }) {
-  const [stage, setStage] = useState<Stage>({ step: "closed" });
+/**
+ * Add a word met outside the app: type it, check the drafted entry, save. It
+ * then joins the learner's lessons, with sentences written at their level
+ * (src/lib/lesson/word-lessons.ts).
+ */
+export function AddWord({ onAdded, open = false }: { onAdded?: () => void; open?: boolean }) {
+  const [stage, setStage] = useState<Stage>({ step: open ? "ask" : "closed" });
   const [input, setInput] = useState("");
   const [hint, setHint] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,7 +53,7 @@ export function AddWord({ onAdded }: { onAdded: () => void }) {
     setStage({ step: "saved", entry });
     setInput("");
     setHint("");
-    onAdded();
+    onAdded?.();
   };
 
   if (stage.step === "closed") {
@@ -74,8 +78,9 @@ export function AddWord({ onAdded }: { onAdded: () => void }) {
           <span dir="rtl" lang="fa" className="text-lg">
             {stage.entry.voc}
           </span>{" "}
-          ({stage.entry.translit}, &ldquo;{stage.entry.gloss}&rdquo;). It will be introduced in your next practice
-          session. Its audio and example sentences are being prepared and will appear here shortly.
+          ({stage.entry.translit}, &ldquo;{stage.entry.gloss}&rdquo;). It comes first in your next practice session.
+          Sentences that use it are being written for your level, with any word it needs to be useful (such as the
+          verb that goes with it), and join your lessons over the next few minutes.
         </p>
         <div className="flex gap-4 text-sm">
           <button type="button" className="font-medium text-cobalt underline" onClick={() => setStage({ step: "ask" })}>
