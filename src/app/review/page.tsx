@@ -1,7 +1,7 @@
 import { count, eq, isNotNull } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { isStale } from "@/lib/audio-store";
+import { isStale } from "@/lib/audio-key";
 import { canReviewAudio } from "@/lib/auth/reviewer";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";

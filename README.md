@@ -123,6 +123,7 @@ src/lib/
     prepare.ts         that writing as a job, one resumable step at a time
     correct.ts         fixes a word or sentence from a description of what is wrong
   jobs/queue.ts      the job queue: leases, retries, a worker that can be cut off
+  audio-key.ts       what a clip says, and how its text is spelled for the speech model
   audio-store.ts     synthesise, listen, retry; human approvals pin a clip
   audio-verify.ts    the automated listener
   tts-provider.ts    provider interface + OpenAI and Azure implementations

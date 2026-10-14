@@ -249,6 +249,8 @@ export const audioClips = pgTable("AudioClip", {
   heard: text("heard"),
   // The instruction that produced the stored audio.
   instructions: text("instructions"),
+  // The text the speech model was given for the stored audio, where it was not `text`.
+  spoken: text("spoken"),
   attempts: integer("attempts"),
   // Set when the stored audio is a whole sentence the word is in ("havij o sib
   // dârim") because the word could not be said alone: that sentence's transliteration.

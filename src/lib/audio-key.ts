@@ -11,10 +11,28 @@ export const VOICE_INSTRUCTION = [
 ].join(" ");
 
 /**
+ * The text sent to the speech model, which is not always the text shown.
+ *
+ * ق and غ are one sound in Tehran, but the speech model keeps them apart as
+ * Dari does: ق a stop at the back of the mouth, غ a gargled fricative, so غذا
+ * came out nearer Dari "ghizâ" than Tehrani "ghazâ". Describing the sound in
+ * the instruction or writing the vowels changed nothing; spelling the word
+ * with ق did, on every take (FINDINGS §16). The listener still checks the
+ * result against the transliteration, which catches a respelling that reads
+ * as another word.
+ */
+export const spokenText = (text: string) => text.replaceAll("غ", "ق");
+
+/** Made in a way the pipeline no longer uses: another instruction, or another spelling for the speech model. */
+export const isStale = (clip: { text: string; instructions: string | null; spoken: string | null }) =>
+  clip.instructions !== null &&
+  (clip.instructions !== VOICE_INSTRUCTION || (clip.spoken ?? clip.text) !== spokenText(clip.text));
+
+/**
  * Frozen. Bumping it would re-register every clip under a new hash and orphan
  * the approvals people have given. A change to how audio is made is picked up
- * instead by comparing each clip's stored instruction with the current one
- * (`isStale` in src/lib/audio-store.ts), which leaves approved clips alone.
+ * instead by comparing each clip's stored instruction and spelling with the current ones
+ * (`isStale`), which leaves approved clips alone.
  */
 const PIPELINE_VERSION = "2";
 
