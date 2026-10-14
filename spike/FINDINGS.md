@@ -703,3 +703,66 @@ inside *havij o nun dârim*.
 - Not built yet: an audition step that makes any new instruction, voice or
   retry rung pass a blind human rating on a fixed set of trap clips before it
   is used. It needs approved clips to compare against, which do not exist yet.
+
+---
+
+## 16. غ came out as Dari says it; spelling it ق for the speech model fixes that
+
+**The problem.** The project owner rejected the clip of غذا for its accent, and
+reported that it sounded like Dari [ɣɪzɑː], where Tehran has [qæzɒː]. Tehran
+has one sound for ق and غ; Dari keeps a stop for ق and a gargled fricative for
+غ. §7 rated this marker Iranian on every voice, but on one sentence per voice.
+
+**The speech model keeps the two letters apart.** Measured from the waveform
+(`spike/gh-onset.py`): the time from the first sound to half the vowel's
+loudness. A stop is a short burst and then the vowel; the fricative is a long,
+quiet, voiced lead-in. Lone words, `nova`, four takes per arm
+(`npm run spike:gh`):
+
+| Text sent | Instruction | Rise, ms |
+|---|---|---|
+| غذا — the stored clip and the rejected one | voice | 135, 115 |
+| غذا | voice | 95, 160, 80, 100 |
+| غذا | voice + the sound described | 180, 130, 115, 25 |
+| غَذا, vowels written | voice | 85, 130, and two that open on a long voiced hum |
+| **قذا** | voice | **25, 30, 25, 30** |
+| قیمت | voice | 25, 15, 10, 20 |
+| قهوه | voice | 15, 10, 20, 30 |
+
+So غ is the fricative on nearly every take, ق is a stop on every take, and a
+word spelled with ق in place of غ is read with the stop. Describing the sound
+in the instruction moved one take in four and broke two of four takes of قهوه
+outright (the listener got no words from them); writing the vowels did nothing.
+That is §13 again: the text decides, the instruction does not.
+
+The vowel was never the fault. Every take of غذا, however made, had the *a*.
+
+**The listener cannot hear this either.** Asked only whether the word opened
+with a stop or a fricative, `gpt-audio-1.5` got the controls right — گدا "stop"
+on 36 of 36 listens, خدا "fricative" on 34 of 36 — and then called ق and غ
+"fricative" alike: قیمت on 37 of 39 listens, قذا on 12 of 12. It cannot be the
+check for this, so nothing automated is.
+
+**Decision.** `spokenText` (`src/lib/audio-key.ts`) gives the speech model ق
+wherever the text has غ, for stored clips and for the tutor's live speech. What
+is shown, and the hash a clip is known by, do not change, so approvals survive.
+Each clip records the spelling its audio was made from (`AudioClip.spoken`), and
+one made from another spelling is stale, exactly as one made with a retired
+instruction is: `npm run db:audio` remakes it, and a remake still has to pass
+the listener, which is what would catch a respelling read as another word
+(مرغ becomes مرق, "broth", *maragh*).
+
+All 11 clips with غ were remade and verified. The new clip of غذا rises in
+10 ms, against 135 ms for the one it replaced.
+
+### Caveats
+
+- No person has heard the remade clips yet. The waveform says "stop"; only an
+  ear says "Tehrani".
+- The measure was taken on lone words that begin with the sound. Inside and at
+  the end of a word (داغ، مرغ) the remade clips were not measured, and Tehran
+  softens the sound between vowels where the respelling may not.
+- The listener sometimes writes a final ق as *g* (*morg*, *dâge*) and fails the
+  take, so these clips take more attempts. Two sentences needed three runs.
+- The measure is not in the pipeline. A new clip is still verified for its
+  words only.
