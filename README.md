@@ -107,7 +107,7 @@ Auth.js magic-link sign-in, and a private Vercel Blob store for audio.
 ```
 src/app/
   dashboard/  learn/[themeId]/  practice/    themes, a themed session, practise everything
-  progress/   reference/        review/      where you stand, the dictionary, audio review
+  progress/   reference/        review/      where you stand, the dictionary, flags to fix
   api/                                       answers, audio, own words, speech
 src/lib/
   content/           the hand-written themes, validated before they are seeded
@@ -122,6 +122,7 @@ src/lib/
     expand.ts          new words and grammar once the curated course runs out
     prepare.ts         that writing as a job, one resumable step at a time
     correct.ts         fixes a word or sentence from a description of what is wrong
+    flags.ts           what has been flagged as wrong, and the review list
   jobs/queue.ts      the job queue: leases, retries, a worker that can be cut off
   audio-key.ts       what a clip says, and how its text is spelled for the speech model
   audio-store.ts     synthesise, listen, retry; human approvals pin a clip
@@ -170,6 +171,11 @@ would leave the course unsound is refused. Reviewers (`AUDIO_REVIEWER_EMAILS`)
 can change what everyone shares; anyone can change what was written for them.
 Each fix is recorded, and `npm run db:seed` puts them back on top of the curated
 content, so seeding again does not undo one.
+
+A complaint can also be flagged instead of fixed on the spot, so a lesson is not
+held up. `/review` lists what is flagged and, for reviewers, the recordings the
+automated listener could not pass. Each is fixed there the same way, or marked
+as fine; a recording marked as fine is pinned, and nothing automated replaces it.
 
 The provider abstraction exists from the first commit rather than "eventually,"
 because voice quality was the axis most likely to force a vendor switch — and it
