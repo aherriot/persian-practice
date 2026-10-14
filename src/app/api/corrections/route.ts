@@ -9,6 +9,7 @@ import { db } from "@/lib/db";
 import { audioClips } from "@/lib/db/schema";
 import { draftCorrection } from "@/lib/lesson/author";
 import { commit, describeSubject, isEmpty, loadSubject, prepare, type Editor, type Line } from "@/lib/lesson/correct";
+import { doubtedClip, mayChange, raiseFlag, resolveFlags } from "@/lib/lesson/flags";
 import { Proposal } from "@/lib/lesson/corrections";
 import { errorResponse, requireApiKey } from "@/lib/openai";
 import { reportError } from "@/lib/report-error";
@@ -20,6 +21,8 @@ const Subject = z.object({ kind: z.enum(["lexeme", "sentence"]), id: z.string().
 const note = z.string().trim().min(1).max(1000);
 
 const Body = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("flag"), subject: Subject, note }),
+  z.object({ action: z.literal("looks-right"), subject: Subject }),
   z.object({ action: z.literal("propose"), subject: Subject, note }),
   z.object({ action: z.literal("apply"), subject: Subject, note, proposal: Proposal }),
 ]);
@@ -45,9 +48,13 @@ export type ApplyResponse = {
 };
 
 /**
- * Fixes a word or a sentence from a description of what is wrong with it.
+ * Flags, reviews and fixes a word or a sentence.
+ * "flag" keeps a note of what is wrong, for the review list, to be fixed later.
+ * "looks-right" closes the flags on it, and pins its recording if the
+ * automated listener was unsure of it: a person has now heard it.
  * "propose" asks the author what should change and answers with that, for the
- * person to read; "apply" makes a change they have agreed to.
+ * person to read; "apply" makes a change they have agreed to, and closes every
+ * flag on the thing it changed.
  */
 export async function POST(request: Request): Promise<Response> {
   const session = await auth();
@@ -59,13 +66,25 @@ export async function POST(request: Request): Promise<Response> {
   if (!body?.success) return Response.json({ error: "invalid request" }, { status: 400 });
   const data = body.data;
 
-  const missingKey = requireApiKey();
-  if (missingKey) return missingKey;
-
   try {
     const editor: Editor = { id: userId, shared: canReviewAudio(session.user?.email ?? null) };
     const loaded = await loadSubject(userId, data.subject);
     if (!loaded) return Response.json({ error: "not found" }, { status: 404 });
+    if (!mayChange(editor, loaded)) return Response.json({ error: "not yours to change" }, { status: 403 });
+
+    if (data.action === "flag") {
+      await raiseFlag(editor, data.subject, data.note);
+      return Response.json({ ok: true });
+    }
+    if (data.action === "looks-right") {
+      await resolveFlags(editor, data.subject, "dismissed");
+      const hash = editor.shared ? await doubtedClip(loaded) : null;
+      if (hash) await reviewClip(hash, userId, { verdict: "approved" });
+      return Response.json({ ok: true });
+    }
+
+    const missingKey = requireApiKey();
+    if (missingKey) return missingKey;
 
     if (data.action === "propose") {
       const subject = describeSubject(loaded);
@@ -85,6 +104,7 @@ export async function POST(request: Request): Promise<Response> {
     if (!prepared.ok) return Response.json({ error: prepared.problems.join(" ") }, { status: 422 });
     const { plan } = prepared;
     const fresh = await commit(editor, loaded, data.note, data.proposal.summary, plan);
+    await resolveFlags(editor, data.subject, "fixed");
     await registerClips(fresh);
 
     let result: ApplyResponse = { audioUrl: null, audioVerified: true };

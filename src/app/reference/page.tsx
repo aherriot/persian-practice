@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AudioReviewProvider } from "@/components/AudioReview";
+import { ReviewerProvider } from "@/components/Reviewer";
 import { canReviewAudio } from "@/lib/auth/reviewer";
 import { requireUser } from "@/lib/auth/session";
 import { audioUrl, wordClip } from "@/lib/audio-key";
@@ -40,9 +40,9 @@ export default async function ReferencePage() {
           Back
         </Link>
       </header>
-      <AudioReviewProvider enabled={canReviewAudio(user.email)}>
+      <ReviewerProvider enabled={canReviewAudio(user.email)}>
         <Reference words={words} patterns={patterns} />
-      </AudioReviewProvider>
+      </ReviewerProvider>
     </main>
   );
 }

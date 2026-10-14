@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { AudioReviewProvider } from "@/components/AudioReview";
+import { ReviewerProvider } from "@/components/Reviewer";
 import { canReviewAudio } from "@/lib/auth/reviewer";
 import { requireUser } from "@/lib/auth/session";
 import { prepareNextSession } from "@/lib/lesson/background";
@@ -18,8 +18,8 @@ export default async function PracticePage() {
   // Queued once the page is sent, and written by a worker, so the next session has fresh material waiting.
   after(() => prepareNextSession(user.id));
   return (
-    <AudioReviewProvider enabled={canReviewAudio(user.email)}>
+    <ReviewerProvider enabled={canReviewAudio(user.email)}>
       <Session plan={plan} href="/practice" userId={user.id} />
-    </AudioReviewProvider>
+    </ReviewerProvider>
   );
 }

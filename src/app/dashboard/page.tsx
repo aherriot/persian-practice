@@ -2,6 +2,7 @@ import Link from "next/link";
 import { canReviewAudio } from "@/lib/auth/reviewer";
 import { requireUser } from "@/lib/auth/session";
 import { signOut } from "@/lib/auth";
+import { openFlagCount } from "@/lib/lesson/flags";
 import { HISTORY_DAYS, loadActivityHours } from "@/lib/lesson/history";
 import { loadKnowledge, themeSummaries } from "@/lib/lesson/store";
 import { weakTargets } from "@/lib/lesson/weak";
@@ -14,10 +15,12 @@ export default async function DashboardPage() {
   const user = await requireUser();
   const now = new Date();
   // Counted from what the learner has met rather than added up over themes, which share words.
-  const [knowledge, hours, reminders] = await Promise.all([
+  const reviewer = canReviewAudio(user.email);
+  const [knowledge, hours, reminders, flagged] = await Promise.all([
     loadKnowledge(user.id),
     loadActivityHours(user.id, now),
     loadReminderSetting(user.id),
+    openFlagCount({ id: user.id, shared: reviewer }),
   ]);
   const themes = await themeSummaries(user.id, now, knowledge);
   const due = [...knowledge.values()].filter((state) => state.dueAt <= now).length;
@@ -95,11 +98,11 @@ export default async function DashboardPage() {
 
       <p className="text-xs text-ink/40">
         Signed in as {user.email ?? user.name ?? user.id}
-        {canReviewAudio(user.email) && (
+        {(reviewer || flagged > 0) && (
           <>
             {" · "}
             <Link href="/review" className="underline">
-              Review audio
+              Review{flagged > 0 && ` (${flagged} flagged)`}
             </Link>
           </>
         )}

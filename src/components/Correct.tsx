@@ -1,21 +1,26 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { ApplyResponse, ProposeResponse } from "@/app/api/corrections/route";
-import { useIsReviewer } from "@/components/AudioReview";
+import { useIsReviewer } from "@/components/Reviewer";
 import { playAudio, refreshAudio } from "@/lib/audio-client";
 import type { Subject } from "@/lib/lesson/corrections";
 
 /**
  * "Something wrong?" under a word or a sentence. The person says what is wrong
- * in their own words; the app answers with what it would change; they agree,
- * and it is changed (src/lib/lesson/correct.ts).
+ * in their own words, about the text or the recording. They can flag it, to
+ * come back to from the review list (/review), or have it fixed now: the app
+ * answers with what it would change; they agree, and it is changed
+ * (src/lib/lesson/correct.ts).
  */
 
 type Step =
   | { at: "closed" }
   | { at: "writing"; error?: string }
   | { at: "asking" }
+  | { at: "flagging" }
+  | { at: "flagged" }
   | { at: "proposed"; proposal: ProposeResponse }
   | { at: "applying"; proposal: ProposeResponse }
   | { at: "done"; audioUrl: string | null; audioVerified: boolean };
@@ -48,6 +53,10 @@ export function Correct({
   own = false,
   after,
   onChanged,
+  note: initialNote = "",
+  open = false,
+  flaggable = true,
+  label = "Something wrong?",
 }: {
   subject: Subject;
   /** Written for this learner alone, so theirs to change whether or not they are a reviewer. */
@@ -55,17 +64,25 @@ export function Correct({
   /** Said once the change is made, when the page will not show it by itself. */
   after?: string;
   onChanged?: () => void;
+  /** What is wrong, already written: a flag being dealt with. */
+  note?: string;
+  /** Start with the box open. */
+  open?: boolean;
+  /** Offer to flag it for later; not on the review list, where it already is. */
+  flaggable?: boolean;
+  /** The link that opens it. */
+  label?: string;
 }) {
   const reviewer = useIsReviewer();
-  const [step, setStep] = useState<Step>({ at: "closed" });
-  const [note, setNote] = useState("");
+  const [step, setStep] = useState<Step>({ at: open ? "writing" : "closed" });
+  const [note, setNote] = useState(initialNote);
 
   if (!reviewer && !own) return null;
 
   if (step.at === "closed") {
     return (
       <button type="button" className={`${linkClass} self-start`} onClick={() => setStep({ at: "writing" })}>
-        Something wrong?
+        {label}
       </button>
     );
   }
@@ -74,6 +91,17 @@ export function Correct({
     setStep({ at: "asking" });
     try {
       setStep({ at: "proposed", proposal: await post<ProposeResponse>({ action: "propose", subject, note }) });
+    } catch (err) {
+      setStep({ at: "writing", error: (err as Error).message });
+    }
+  };
+
+  const flag = async () => {
+    setStep({ at: "flagging" });
+    try {
+      await post({ action: "flag", subject, note });
+      setNote("");
+      setStep({ at: "flagged" });
     } catch (err) {
       setStep({ at: "writing", error: (err as Error).message });
     }
@@ -97,7 +125,7 @@ export function Correct({
 
   return (
     <div dir="ltr" className="flex w-full flex-col gap-2 rounded-md border border-ink/15 bg-paper px-3 py-2 text-left">
-      {(step.at === "writing" || step.at === "asking") && (
+      {(step.at === "writing" || step.at === "asking" || step.at === "flagging") && (
         <>
           <label className="flex flex-col gap-1 text-xs text-ink/60">
             What is wrong? Say it however you like.
@@ -106,7 +134,7 @@ export function Correct({
               rows={2}
               maxLength={1000}
               value={note}
-              disabled={step.at === "asking"}
+              disabled={step.at !== "writing"}
               onChange={(event) => setNote(event.target.value)}
               placeholder="It says “va” but should be “o” · It means “we have”, not “I have” · Nobody says it this way"
               className="rounded border border-ink/20 bg-sand px-2 py-1.5 text-sm text-ink outline-none placeholder:text-ink/35 focus:border-cobalt"
@@ -116,12 +144,23 @@ export function Correct({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              disabled={step.at === "asking" || note.trim().length === 0}
+              disabled={step.at !== "writing" || note.trim().length === 0}
               onClick={() => void propose()}
               className={`${buttonClass} border-cobalt text-cobalt enabled:hover:bg-cobalt enabled:hover:text-sand ${step.at === "asking" ? "animate-pulse" : ""}`}
             >
               {step.at === "asking" ? "Working out a fix…" : "Suggest a fix"}
             </button>
+            {flaggable && (
+              <button
+                type="button"
+                disabled={step.at !== "writing" || note.trim().length === 0}
+                onClick={() => void flag()}
+                title="Keep a note of it, and fix it later from the review list"
+                className={`${buttonClass} border-ink/25 text-ink/70 enabled:hover:border-ink enabled:hover:text-ink ${step.at === "flagging" ? "animate-pulse" : ""}`}
+              >
+                {step.at === "flagging" ? "Flagging…" : "Flag for later"}
+              </button>
+            )}
             {step.at === "writing" && (
               <button type="button" className={linkClass} onClick={() => setStep({ at: "closed" })}>
                 Cancel
@@ -178,6 +217,19 @@ export function Correct({
             )}
           </div>
         </>
+      )}
+
+      {step.at === "flagged" && (
+        <p role="status" className="text-xs text-ink/70">
+          Flagged. It is on your{" "}
+          <Link href="/review" className="underline hover:text-ink">
+            review list
+          </Link>
+          .{" "}
+          <button type="button" className="underline hover:text-ink" onClick={() => setStep({ at: "writing" })}>
+            Something else
+          </button>
+        </p>
       )}
 
       {step.at === "done" && (

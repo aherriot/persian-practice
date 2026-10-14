@@ -1,8 +1,9 @@
 import { devAuthEnabled } from "./dev-mode";
 
 /**
- * Who may judge lesson audio. Clips are shared by every learner and a
- * rejection spends money on a remake, so this is not open to all accounts:
+ * Who may change what every learner shares: the curated words and sentences,
+ * and their recordings. A fix spends money on the language model and on
+ * remade audio, so this is not open to all accounts:
  * only the emails in `AUDIO_REVIEWER_EMAILS` (comma-separated). With none set,
  * anyone signed in may review outside production, and nobody in production.
  */
