@@ -24,10 +24,10 @@ export function SpeakButton({
       onClick={() => void playAudio(url)}
       aria-label={label}
       className={`inline-flex shrink-0 items-center justify-center rounded-full border border-ink/25 bg-sand text-cobalt transition hover:border-cobalt hover:bg-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-turquoise-dark ${
-        large ? "h-20 w-20" : small ? "h-8 w-8" : "h-10 w-10"
+        large ? "h-16 w-16 sm:h-20 sm:w-20" : small ? "h-8 w-8" : "h-10 w-10"
       }`}
     >
-      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={large ? "h-9 w-9" : small ? "h-4 w-4" : "h-5 w-5"}>
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={large ? "h-7 w-7 sm:h-9 sm:w-9" : small ? "h-4 w-4" : "h-5 w-5"}>
         <path d="M4 9v6h4l5 4V5L8 9H4z" />
         <path
           d="M16 8.5a4.5 4.5 0 0 1 0 7M18.5 6a8 8 0 0 1 0 12"

@@ -214,11 +214,11 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
 
   return (
     <Shell progress={index / queue.length} notice={notice}>
-      <div key={exercise.key} className="flex flex-1 flex-col gap-6">
+      <div key={exercise.key} className="flex flex-1 flex-col gap-4 sm:gap-6">
         {exercise.type === "intro-lexeme" && (
           <>
             <NewHeader exercise={exercise} />
-            <div className="flex flex-col items-center gap-3 rounded-lg border border-ink/15 bg-sand px-6 py-8 text-center shadow-[inset_0_4px_8px_-6px_rgba(42,29,22,0.35)]">
+            <div className="flex flex-col items-center gap-2 rounded-lg border border-ink/15 bg-sand px-5 py-5 text-center sm:gap-3 sm:px-6 sm:py-8 shadow-[inset_0_4px_8px_-6px_rgba(42,29,22,0.35)]">
               <p dir="rtl" lang="fa" className="text-5xl leading-[1.9] text-ink">
                 {exercise.lexeme.voc}
               </p>
@@ -254,11 +254,11 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
         {exercise.type === "choice" && <Choice exercise={exercise} answered={answered} onAnswer={grade} />}
         {exercise.type === "tiles" && <Tiles exercise={exercise} answered={answered} onAnswer={grade} />}
 
-        <div className="mt-auto flex flex-col gap-4">
+        <div className="mt-auto flex flex-col gap-3">
           {answered !== null && (exercise.type === "choice" || exercise.type === "tiles") && (
             <div
               role="status"
-              className={`rounded-lg border px-4 py-3 ${
+              className={`rounded-lg border px-3 py-2.5 sm:px-4 sm:py-3 ${
                 answered ? "border-turquoise-dark/40 bg-turquoise/10" : "border-crimson/40 bg-crimson/10"
               }`}
             >
@@ -286,14 +286,15 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
                   <SpeakButton url={exercise.reply.audioUrl} label="Hear the reply" />
                 </div>
               )}
-              {exercise.sentence.generated && <ReportSentence key={exercise.key} sentenceId={exercise.sentence.id} />}
-              <div className="mt-2 flex">
+              <div className="mt-2 flex flex-wrap items-start gap-x-4 gap-y-1">
+                {exercise.sentence.generated && <ReportSentence key={exercise.key} sentenceId={exercise.sentence.id} />}
                 <Correct subject={{ kind: "sentence", id: exercise.sentence.id }} own={exercise.sentence.generated} after={FIXED_LATER} />
               </div>
             </div>
           )}
           {canContinue && (
-            <Button autoFocus className="self-end" onClick={answered !== null ? advance : acknowledge}>
+            // Pinned to the bottom of the screen, so a long answer never pushes it out of reach.
+            <Button autoFocus className="sticky bottom-3 self-end shadow-md" onClick={answered !== null ? advance : acknowledge}>
               {answered !== null ? "Continue" : "Got it"}
             </Button>
           )}
@@ -306,11 +307,11 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
 /** Generated sentences are checked by machine, not by a person, so the learner gets the last word. */
 function ReportSentence({ sentenceId }: { sentenceId: string }) {
   const [reported, setReported] = useState(false);
-  if (reported) return <p className="mt-2 text-xs text-ink/60">Thanks. That sentence will not be shown again.</p>;
+  if (reported) return <p className="text-xs text-ink/60">Thanks. That sentence will not be shown again.</p>;
   return (
     <button
       type="button"
-      className="mt-2 text-xs text-ink/50 underline hover:text-ink"
+      className="text-xs text-ink/50 underline hover:text-ink"
       onClick={() => {
         setReported(true);
         void fetch("/api/lesson/report", {
@@ -320,7 +321,7 @@ function ReportSentence({ sentenceId }: { sentenceId: string }) {
         }).catch(() => {});
       }}
     >
-      This sentence was written by the app. Does it sound wrong? Remove it
+      Written by the app. Sounds wrong? Remove it
     </button>
   );
 }
@@ -337,7 +338,7 @@ function Unsaved({ count }: { count: number }) {
 
 function Shell({ progress, notice, children }: { progress?: number; notice?: ReactNode; children: ReactNode }) {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-6 bg-paper px-5 py-6">
+    <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col gap-4 bg-paper px-4 py-4 sm:gap-6 sm:px-5 sm:py-6">
       {progress !== undefined && (
         <div className="flex items-center gap-3">
           <Link href="/dashboard" aria-label="Leave session" className="text-lg leading-none text-ink/40 hover:text-ink">
@@ -382,6 +383,9 @@ function Example({ exercise }: { exercise: Exercise }) {
   );
 }
 
+/** Options up to this many characters are laid out two to a row. */
+const SHORT_OPTION = 14;
+
 /** Exercises answered by picking Persian rather than English. */
 const PERSIAN_OPTIONS: ReadonlySet<ChoiceExercise["variant"]> = new Set(["hear-pick", "pick-word", "cloze", "transform", "reply-heard", "reply-read"]);
 
@@ -398,6 +402,8 @@ function Choice({
   const done = answered !== null;
   const persianOptions = PERSIAN_OPTIONS.has(exercise.variant);
   const isReply = exercise.variant === "reply-heard" || exercise.variant === "reply-read";
+  // Single words and short phrases fit two to a row, even on a phone.
+  const short = exercise.options.every((option) => option.length <= SHORT_OPTION);
 
   const pick = useCallback(
     (i: number) => {
@@ -432,7 +438,7 @@ function Choice({
           )}
         </TheySay>
       ) : (
-        <div className="flex min-h-28 flex-col items-center justify-center gap-3 text-center">
+        <div className="flex min-h-20 flex-col items-center justify-center gap-2 text-center sm:min-h-28 sm:gap-3">
           {exercise.variant === "listen" && <SpeakButton url={exercise.sentence.audioUrl} label="Hear it again" large />}
           {(exercise.variant === "hear-word" || exercise.variant === "hear-pick") && exercise.wordAudioUrl && (
             <SpeakButton url={exercise.wordAudioUrl} label="Hear it again" large />
@@ -469,26 +475,26 @@ function Choice({
         </div>
       )}
 
-      {isReply && <p className="-mb-3 text-right text-xs font-semibold uppercase tracking-widest text-ink/50">You say</p>}
+      {isReply && <p className="-mb-2 text-right text-xs font-semibold uppercase tracking-widest text-ink/50">You say</p>}
       {/* Replies are whole sentences: one to a line, like the next turn in a conversation. */}
-      <div className={`grid gap-3 ${isReply ? "justify-items-end" : "sm:grid-cols-2"}`}>
+      <div className={`grid gap-2 sm:gap-3 ${isReply ? "justify-items-end" : short ? "grid-cols-2" : "sm:grid-cols-2"}`}>
         {exercise.options.map((option, i) => {
           const isAnswer = i === exercise.answer;
           const state = !done ? "idle" : isAnswer ? "right" : i === picked ? "wrong" : "muted";
+          // Once answered, only what was picked and what was right stay, to leave room for the answer.
+          if (state === "muted") return null;
           return (
             <button
               key={i}
               type="button"
               disabled={done}
               onClick={() => pick(i)}
-              className={`flex items-center gap-3 border px-4 py-3 ${isReply ? "w-full max-w-[85%] rounded-2xl rounded-br-sm" : "rounded-lg"} text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-turquoise-dark ${
+              className={`flex items-center gap-3 border px-3 py-2 sm:px-4 sm:py-3 ${isReply ? "w-full max-w-[85%] rounded-2xl rounded-br-sm" : "rounded-lg"} text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-turquoise-dark ${
                 state === "idle"
                   ? "border-ink/20 bg-sand hover:border-cobalt hover:bg-paper"
                   : state === "right"
                     ? "border-turquoise-dark bg-turquoise/15"
-                    : state === "wrong"
-                      ? "border-crimson bg-crimson/10"
-                      : "border-ink/10 bg-sand opacity-50"
+                    : "border-crimson bg-crimson/10"
               }`}
             >
               <span className="font-mono text-xs text-ink/35">{i + 1}</span>
@@ -544,7 +550,7 @@ function Tiles({
         dir="rtl"
         lang="fa"
         aria-label="Your sentence"
-        className="flex min-h-20 flex-wrap items-center gap-2 rounded-lg border border-ink/15 bg-sand px-3 py-3 shadow-[inset_0_4px_8px_-6px_rgba(42,29,22,0.35)]"
+        className="flex min-h-16 flex-wrap items-center gap-2 rounded-lg border border-ink/15 bg-sand px-3 py-3 shadow-[inset_0_4px_8px_-6px_rgba(42,29,22,0.35)]"
       >
         {chosen.map((tileIndex, position) => (
           <button
