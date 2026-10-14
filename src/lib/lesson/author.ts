@@ -329,3 +329,97 @@ Write ${count} sentences.`;
 
   return (await askJson("pattern", PatternDrafts, system, user)).sentences;
 }
+
+// --- Lessons for a word the learner added ---
+
+/** How far along the learner is, which sets how hard the sentences for their word may be. */
+export type Level = {
+  stage: "beginner" | "intermediate" | "advanced";
+  /** Words and grammar points they have met. */
+  known: number;
+  /** Titles of the grammar they know. */
+  grammar: string[];
+};
+
+/** The ids a draft uses for the words it adds alongside the learner's: NEW1, NEW2… */
+export const companionId = (n: number) => `NEW${n}`;
+
+const WordLessons = z.object({
+  companions: z.array(z.object({ ...wordFields, why: z.string() })),
+  sentences: Drafts.shape.sentences,
+});
+export type WordLessons = z.infer<typeof WordLessons>;
+
+export type WordLessonRequest = {
+  /** The word the learner added. */
+  word: Lexeme;
+  /** Words they know, which the sentences are built from. */
+  known: Lexeme[];
+  /** Words already in the course that they have not met: not to be used or added again. */
+  upcoming: Lexeme[];
+  patterns: Set<string>;
+  level: Level;
+  count: number;
+};
+
+const LEVEL_STYLE: Record<Level["stage"], string> = {
+  beginner:
+    "They are a beginner. Keep each sentence to 2 to 5 words, in the plainest grammar they have: the kind of thing they could say tomorrow. Add only what the word cannot be used without.",
+  intermediate:
+    "They are past the basics. Write 3 to 6 words each and use the grammar they know: questions, other persons of the verb, the forms listed. Vary what the sentences do.",
+  advanced:
+    "They know a good deal. Make the sentences as rich as their grammar and vocabulary allow, 5 to 7 words: combine two ideas, give a reason or a contrast, ask a fuller question, use several of the forms they know together.",
+};
+
+/**
+ * Lessons for a word the learner added themselves: sentences that use it at
+ * their level, and the few words it needs to be useful (football wants "I
+ * play"), each brought in by the sentence that first uses it.
+ */
+export async function draftWordLessons(request: WordLessonRequest): Promise<WordLessons> {
+  const allowedForms = (lexeme: Lexeme): Form[] =>
+    formsFor(lexeme).filter((form) => {
+      const pattern = FORM_PATTERN[form];
+      return !pattern || request.patterns.has(pattern);
+    });
+  const words = [request.word, ...request.known];
+  const usedForms = new Set(words.flatMap(allowedForms).filter((form) => form !== "base"));
+  const { word, level } = request;
+
+  const system = `You write lessons for an adult learning spoken Tehrani Persian. They have just added a word of their own, met outside the course, and want to be able to use it. ${REGISTER}
+
+${LEVEL_STYLE[level.stage]}
+
+Write sentences that use their word, in the order they should be learned:
+- Every sentence uses the word "${word.id}" (${word.fa}, ${word.gloss}).
+- Use ONLY words from the list, by id, and the companion words you add.
+- A word may only take the forms listed for it; a companion word is always "base".${[...usedForms].map((form) => `\n  - "${form}": ${FORM_HELP[form as Exclude<Form, "base">]}`).join("")}
+- Natural things a person would really say, each making sense on its own. If the words do not allow a natural sentence, write fewer.
+- kind: "statement"${request.patterns.has("question") ? ', "yes-no-question" (rising intonation)' : ""} or "wh-question" (only with a question word).
+- comma: true when a comma follows that word.
+- english: a natural translation of exactly what the Persian says.
+
+Companion words: the word may need others to be useful at all, which the learner does not have yet. Football is played, so a beginner who adds "football" needs "I play" (بازی می‌کنم) to say "I play football". Add such a word only if the sentences need it and nothing in the list will do; at most ${level.stage === "beginner" ? 2 : 3}, and none at all if the word can already be used.
+- Each companion is one word or fixed phrase, in the form the sentences use it (each inflected verb form is its own word: "I play", "you play").
+- Refer to them in sentences as "${companionId(1)}", "${companionId(2)}", … in the order listed.
+- Never a word in the list or one already in the course.
+- why: a few words on what it lets the learner say.
+For each companion write the entry:
+${WORD_FIELDS}
+
+Order: the first sentence uses only the learner's word and words from the list, if that can be natural. A companion is brought in by the first sentence that uses it, and no sentence brings in more than one. Later sentences may use any companion already brought in.`;
+
+  const user = `The learner's word: ${word.id} — ${word.fa} — ${word.translit} — ${word.gloss} — ${allowedForms(word).join(", ")}
+
+Words they know (id — Persian — pronunciation — meaning — forms allowed):
+${request.known.map((w) => `${w.id} — ${w.fa} — ${w.translit} — ${w.gloss} — ${allowedForms(w).join(", ")}`).join("\n")}
+
+Grammar they know: ${level.grammar.join(", ") || "only the basics"}
+
+Already in the course, coming later (do not use, do not add):
+${request.upcoming.map((w) => `${w.fa} (${w.gloss})`).join(", ") || "(none)"}
+
+Write up to ${request.count} sentences.`;
+
+  return askJson("word_lessons", WordLessons, system, user);
+}

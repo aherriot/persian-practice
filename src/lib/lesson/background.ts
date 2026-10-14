@@ -9,6 +9,7 @@ import { reviewCandidates } from "./drafts";
 import { draftFrontier, storeFrontier } from "./expand";
 import { draftPractice, storePractice } from "./generate";
 import { isSlow, prepareStep, type Stages } from "./prepare";
+import { draftLessonsFor, storeLesson } from "./word-lessons";
 
 /**
  * Content is got ready for a learner by jobs on a queue, not inside the
@@ -24,6 +25,8 @@ const stages: Stages = {
   draftPractice,
   storePractice,
   review: reviewCandidates,
+  draftLessons: (userId, lexemeId) => draftLessonsFor(userId, lexemeId),
+  storeLesson: (userId, candidate) => storeLesson(userId, candidate),
   async makeWordClip(userId, lexemeId) {
     const word = await db.query.lexemes.findFirst({ where: and(eq(lexemes.id, lexemeId), eq(lexemes.ownerId, userId)) });
     if (word) await makeVerifiedClip(wordClip(word));
