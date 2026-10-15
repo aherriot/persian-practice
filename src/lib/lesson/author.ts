@@ -1,5 +1,7 @@
 import { z } from "zod";
+import type { ReasoningEffort } from "openai/resources/shared";
 import { openai } from "@/lib/openai";
+import { reportUsage } from "@/lib/usage";
 import type { SentenceDraft } from "./assemble";
 import { Proposal } from "./corrections";
 import { FORM_HELP, FORMS, formsFor, FORM_PATTERN, type Form } from "./forms";
@@ -14,10 +16,25 @@ export const CONTENT_MODEL = process.env.OPENAI_CONTENT_MODEL ?? "gpt-5.5";
 
 const AUTHOR_TIMEOUT_MS = 5 * 60_000;
 
-async function askJson<T extends z.ZodType>(name: string, schema: T, system: string, user: string): Promise<z.infer<T>> {
+/**
+ * How hard the model thinks before it writes. Thinking is billed as output and
+ * was most of what authoring cost, so drafts think little: whatever they get
+ * wrong, the reviewer or the assembler throws out. The reviewer and
+ * corrections keep the model's default, since nothing checks them after.
+ */
+const DRAFT_EFFORT: ReasoningEffort = "low";
+
+async function askJson<T extends z.ZodType>(
+  name: string,
+  schema: T,
+  system: string,
+  user: string,
+  effort?: ReasoningEffort,
+): Promise<z.infer<T>> {
   const response = await openai.chat.completions.create(
     {
       model: CONTENT_MODEL,
+      ...(effort && { reasoning_effort: effort }),
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -31,6 +48,7 @@ async function askJson<T extends z.ZodType>(name: string, schema: T, system: str
     // the client's default one-minute limit is too short for a batch.
     { timeout: AUTHOR_TIMEOUT_MS },
   );
+  reportUsage(`author:${name}`, response.model, response.usage);
   return schema.parse(JSON.parse(response.choices[0]?.message.content ?? "null"));
 }
 
@@ -92,7 +110,7 @@ ${request.existing.join("\n") || "(none)"}
 
 Write up to ${request.count} new sentences.`;
 
-  return (await askJson("sentences", Drafts, system, user)).sentences;
+  return (await askJson("sentences", Drafts, system, user, DRAFT_EFFORT)).sentences;
 }
 
 // --- Review ---
@@ -178,7 +196,7 @@ If the learner gives a verb as an infinitive or in English ("to go"), give the f
 Entries already in the course, for style:
 ${examples.map((w) => `${w.fa} | ${w.voc} | ${w.translit} | ${w.gloss}`).join("\n")}`;
   const user = hint ? `${input}\n\nWhat the learner says it means or where they heard it: ${hint}` : input;
-  return askJson("word", WordDraft, system, user);
+  return askJson("word", WordDraft, system, user, DRAFT_EFFORT);
 }
 
 // --- Corrections ---
@@ -299,7 +317,7 @@ What they study and care about: ${request.interests.join(", ") || "everyday conv
 
 Choose ${request.count} new words.`;
 
-  return (await askJson("expansion", Expansion, system, user)).items;
+  return (await askJson("expansion", Expansion, system, user, DRAFT_EFFORT)).items;
 }
 
 const PatternDrafts = z.object({ sentences: Drafts.shape.sentences });
@@ -335,7 +353,7 @@ ${known.map((w) => `${w.id} — ${w.fa} — ${w.translit} — ${w.gloss} — ${a
 
 Write ${count} sentences.`;
 
-  return (await askJson("pattern", PatternDrafts, system, user)).sentences;
+  return (await askJson("pattern", PatternDrafts, system, user, DRAFT_EFFORT)).sentences;
 }
 
 // --- Lessons for a word the learner added ---
@@ -429,5 +447,5 @@ ${request.upcoming.map((w) => `${w.fa} (${w.gloss})`).join(", ") || "(none)"}
 
 Write up to ${request.count} sentences.`;
 
-  return askJson("word_lessons", WordLessons, system, user);
+  return askJson("word_lessons", WordLessons, system, user, DRAFT_EFFORT);
 }
