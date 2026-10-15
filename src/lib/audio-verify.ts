@@ -1,4 +1,5 @@
 import { openai } from "@/lib/openai";
+import { reportUsage } from "@/lib/usage";
 
 /**
  * An automated ear for synthesised speech. The speech model picks its own
@@ -9,7 +10,7 @@ import { openai } from "@/lib/openai";
  * Measured in spike/FINDINGS.md §13. Like every automated screen in this
  * project it nominates clips for a human; it does not replace one.
  */
-export const LISTENER_MODEL = "gpt-audio-1.5";
+export const LISTENER_MODEL = process.env.OPENAI_LISTENER_MODEL ?? "gpt-audio-1.5";
 
 export type Verdict = {
   /** Every expected word was heard as written, with no unnatural pause. */
@@ -30,16 +31,16 @@ Listen carefully. For each expected word, write what was actually spoken at that
 
 Also say whether there is an unnatural pause or break between words that a native speaker would run together.
 
-Reply with JSON only: {"words":[{"expected":"...","heard":"...","match":true}],"pause":false}`;
+Reply with JSON only, one entry per expected word in order: {"words":[{"heard":"...","match":true}],"pause":false}`;
 
 /** The listener occasionally answers as if no audio were attached; ask again rather than fail the clip. */
 const LISTEN_TRIES = 3;
 
-export async function listen(audio: Buffer, expected: string[]): Promise<Verdict> {
+export async function listen(audio: Buffer, expected: string[], model = LISTENER_MODEL): Promise<Verdict> {
   let failure: unknown;
   for (let attempt = 0; attempt < LISTEN_TRIES; attempt++) {
     try {
-      return await listenOnce(audio, expected);
+      return await listenOnce(audio, expected, model);
     } catch (err) {
       if (!(err instanceof ListenerReplyError)) throw err;
       failure = err;
@@ -50,9 +51,9 @@ export async function listen(audio: Buffer, expected: string[]): Promise<Verdict
 
 export class ListenerReplyError extends Error {}
 
-async function listenOnce(audio: Buffer, expected: string[]): Promise<Verdict> {
+async function listenOnce(audio: Buffer, expected: string[], model: string): Promise<Verdict> {
   const response = await openai.chat.completions.create({
-    model: LISTENER_MODEL,
+    model,
     modalities: ["text"],
     messages: [
       {
@@ -64,6 +65,7 @@ async function listenOnce(audio: Buffer, expected: string[]): Promise<Verdict> {
       },
     ],
   });
+  reportUsage("listener", response.model, response.usage);
   const raw = response.choices[0]?.message.content ?? "";
   const json = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
   let parsed: { words?: { heard?: unknown; match?: unknown }[]; pause?: unknown };

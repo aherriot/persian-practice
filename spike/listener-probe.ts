@@ -8,15 +8,16 @@
  * how often the two agree. A listener that passes wrong audio is worse than no
  * listener, so false passes are the number that matters.
  *
- * Usage: npm run spike:listener
+ * Usage: npm run spike:listener [model]   (default: the app's listener model)
  */
 import "../scripts/load-env.ts";
 
 import { existsSync, readFileSync } from "node:fs";
-import { listen } from "../src/lib/audio-verify.ts";
+import { listen, LISTENER_MODEL } from "../src/lib/audio-verify.ts";
 import { HOMOGRAPHS } from "./homographs.ts";
 
 const RUNS = 2;
+const MODEL = process.argv[2] ?? LISTENER_MODEL;
 
 // Human ratings from FINDINGS §6. kerm/plain was left unrated.
 const RATED: Record<string, Record<string, boolean>> = {
@@ -57,7 +58,7 @@ async function main() {
     }
     const audio = readFileSync(clip.file);
     for (let run = 0; run < RUNS; run++) {
-      const verdict = await listen(audio, clip.expected);
+      const verdict = await listen(audio, clip.expected, MODEL);
       total++;
       if (verdict.pass === clip.good) agree++;
       else if (verdict.pass) falsePass++;
@@ -68,7 +69,7 @@ async function main() {
       );
     }
   }
-  console.log(`\n${agree}/${total} agree · ${falsePass} false passes · ${falseFail} false fails`);
+  console.log(`\n${MODEL}: ${agree}/${total} agree · ${falsePass} false passes · ${falseFail} false fails`);
 }
 
 main().catch((err) => {
