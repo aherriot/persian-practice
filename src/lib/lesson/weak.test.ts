@@ -120,3 +120,19 @@ test("practising a weak word early does not move it on, but getting it wrong sti
   const due = new Map([["lexeme:darim", { ...waiting, dueAt: NOW }]]);
   assert.equal(applyAnswer(due, target, [], true, NOW).get("lexeme:darim")!.repetitions, 2);
 });
+
+test("a weak thing asked about lately is not brought up again before it is due", () => {
+  const knowledge = knowing(8);
+  knowledge.set("lexeme:darim", state({ lapses: 2 }));
+  knowledge.set("lexeme:havij", state({ lapses: 1, repetitions: 1 }));
+  const weak = weakTargets(knowledge);
+
+  // Practised earlier today: a right answer then left its schedule as it was, so only the other comes up.
+  const plan = planSession(content, knowledge, { now: NOW, seed: 1, maxNew: 0, weak, recent: new Set(["lexeme:darim"]) });
+  const graded = plan.exercises.flatMap((e) => ((e.type === "choice" || e.type === "tiles") && e.primary ? [e.primary.id] : []));
+  assert.deepEqual(graded, ["havij"]);
+
+  // Once due, it is reviewed whatever came before.
+  knowledge.set("lexeme:darim", state({ lapses: 2, dueAt: NOW }));
+  assert.ok(dueTargets(knowledge, NOW, 10, weak, new Set(["lexeme:darim"])).some((d) => d.key === "lexeme:darim"));
+});

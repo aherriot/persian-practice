@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, notInArray, or, sql } from "drizzle-orm";
 import { wordClip } from "@/lib/audio-key";
 import { db } from "@/lib/db";
 import { audioClips, lexemes, patterns, reviewLog, sentences, themes } from "@/lib/db/schema";
@@ -20,6 +20,8 @@ import {
 import type { SessionPlan } from "./types";
 import { weakTargets } from "./weak";
 
+/** Something asked about within this long is not brought up again before it is due. */
+const RECENT_MS = 12 * 60 * 60 * 1000;
 /** Sentences fetched for each thing due, so a review can avoid one already used this session. */
 const PER_REVIEW = 6;
 /** Sentences fetched for ungraded practice when little is due. */
@@ -56,21 +58,26 @@ const inTheme = (themeId: string) => {
  */
 export async function loadSession(
   userId: string,
-  opts: Omit<PlanOptions, "seen" | "distractors" | "alternates" | "confusions" | "unspeakable"> & Scope,
+  opts: Omit<PlanOptions, "seen" | "distractors" | "alternates" | "confusions" | "unspeakable" | "recent"> & Scope,
 ): Promise<SessionPlan> {
   const { themeId, now, maxNew = DEFAULT_MAX_NEW, maxReview = DEFAULT_MAX_REVIEW } = opts;
   const scope = and(visibleSentence(userId), themeId ? inTheme(themeId) : undefined)!;
 
-  const [known, patternRows, confusionRows] = await Promise.all([
+  const [known, patternRows, confusionRows, recentRows] = await Promise.all([
     loadKnowledge(userId),
     db.select().from(patterns),
     loadConfusions(userId, now),
+    db
+      .selectDistinct({ target: reviewLog.target })
+      .from(reviewLog)
+      .where(and(eq(reviewLog.userId, userId), isNotNull(reviewLog.target), gt(reviewLog.createdAt, new Date(now.getTime() - RECENT_MS)))),
   ]);
+  const recent = new Set(recentRows.map((row) => row.target!));
 
   // What the learner keeps getting wrong comes first in practice across the
   // course. Not in a theme's session: those things may be in other themes.
   const weak = opts.weak ?? (themeId ? [] : weakTargets(known));
-  const due = [...new Set(dueTargets(known, now, maxReview, weak).map((item) => item.key))];
+  const due = [...new Set(dueTargets(known, now, maxReview, weak, recent).map((item) => item.key))];
   const dueIds = (kind: "lexeme" | "pattern") =>
     textArray(due.filter((key) => key.startsWith(`${kind}:`)).map((key) => key.slice(kind.length + 1)));
 
@@ -191,6 +198,7 @@ export async function loadSession(
       maxNew,
       maxReview,
       weak,
+      recent,
       seen: new Map(poolRows.map((row) => [row.sentence.id, row.seen])),
       distractors,
       alternates,

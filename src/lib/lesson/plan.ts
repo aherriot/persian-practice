@@ -32,6 +32,13 @@ export type PlanOptions = {
    * when not due while the session has room. Ones not met are ignored.
    */
   weak?: string[];
+  /**
+   * Target keys of what the learner was asked about lately (see session.ts).
+   * Not brought up again early, weak or not: a right answer to something not
+   * yet due leaves its schedule as it is, so without this a weak word would
+   * come back in every session until it fell due.
+   */
+  recent?: Set<string>;
   minExercises?: number;
   /** How many times the learner has answered each sentence. Reviews prefer the least seen. */
   seen?: Map<string, number>;
@@ -76,12 +83,19 @@ const firstSkill = (key: string) => [...key].reduce((sum, char) => sum + char.ch
  * up in a second, in this order:
  *   1. weak things that are due, the weakest first;
  *   2. everything else that is due, the most overdue first;
- *   3. weak things that are not due yet, each in its weakest skill;
+ *   3. weak things that are not due yet, each in its weakest skill, unless
+ *      asked about lately (`recent`);
  *   4. second and later skills of what is due.
  * A weak thing reviewed early is graded by the usual rules: a right answer
  * moves it on only if it was due, so practising it does not push it out of sight.
  */
-export function dueTargets(knowledge: Map<string, KnowledgeState>, now: Date, max: number, weak: string[] = []): Due[] {
+export function dueTargets(
+  knowledge: Map<string, KnowledgeState>,
+  now: Date,
+  max: number,
+  weak: string[] = [],
+  recent: Set<string> = new Set(),
+): Due[] {
   const skillsOf = (key: string, state: KnowledgeState): Due[] => {
     const from = firstSkill(key);
     return SKILLS.map((_, i) => SKILLS[(from + i) % SKILLS.length]).map((skill) => ({ key, skill, state: state.skills[skill] }));
@@ -97,7 +111,7 @@ export function dueTargets(knowledge: Map<string, KnowledgeState>, now: Date, ma
   const weakest = (a: Due, b: Due) => a.state.repetitions - b.state.repetitions || a.state.dueAt.getTime() - b.state.dueAt.getTime();
   const early = weak.flatMap((key) => {
     const state = knowledge.get(key);
-    if (!state || first.some((item) => item.key === key)) return [];
+    if (!state || recent.has(key) || first.some((item) => item.key === key)) return [];
     return skillsOf(key, state).sort(weakest).slice(0, 1);
   });
   return [...first, ...early, ...again].slice(0, max);
@@ -398,7 +412,7 @@ export function planSession(
 
   // --- Reviews: decided before anything new is marked known, so a review
   // never leans on a word introduced later in the same session. ---
-  const due = dueTargets(knowledge, now, maxReview, opts.weak);
+  const due = dueTargets(knowledge, now, maxReview, opts.weak, opts.recent);
 
   const reviews: Exercise[] = [];
   for (const { key, skill, state } of due) {
