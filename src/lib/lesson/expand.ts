@@ -4,7 +4,7 @@ import { makeVerifiedClip } from "@/lib/audio-store";
 import { db } from "@/lib/db";
 import { lexemes, sentences } from "@/lib/db/schema";
 import { normalizeForCompare } from "@/lib/normalize";
-import { assembleSentence, type Assembled } from "./assemble";
+import { assembleSentence } from "./assemble";
 import { draftExpansion, draftPatternSentences, NEW_WORD } from "./author";
 import { reviewCandidates, type Candidate, type Draft, type Rejection } from "./drafts";
 import { FORM_PATTERN, formsFor, GRAMMAR_SPINE } from "./forms";
@@ -13,7 +13,8 @@ import { loadStretch } from "./history";
 import { newPerSession } from "./pace";
 import { sentenceClip, sentenceText } from "./plan";
 import { isReadyForMore, measureProgress } from "./progress";
-import { loadCourse, loadKnowledge, loadSameWords, loadWordUses } from "./store";
+import { dropRepeats } from "./repeats";
+import { loadCourse, loadKnowledge, loadWordUses } from "./store";
 import type { Lexeme } from "./types";
 import { WORKING_VOCABULARY, workingVocabulary } from "./vocabulary";
 import { ensureTheme, ownedLexeme, validateWord } from "./words";
@@ -43,7 +44,6 @@ export type ExpandResult = {
 };
 
 const goingFurtherId = (userId: string) => `going-further-${userId}`;
-const plainText = (s: Pick<Assembled, "tokens">) => normalizeForCompare(s.tokens.map((t) => t.fa).join(" "));
 
 /**
  * Drafts something new for a learner who is running out of material: the next
@@ -131,18 +131,9 @@ export async function draftFrontier(userId: string, opts: { force?: boolean } = 
   }
 
   // --- Nothing the learner already has, nor the same thing twice. ---
-  const taken = new Set((await loadSameWords(userId, considered.map((c) => c.sentence.lexemeIds))).map(plainText));
-  const candidates: Candidate[] = [];
-  for (const candidate of considered) {
-    const text = plainText(candidate.sentence);
-    if (taken.has(text)) {
-      result.rejected.push({ text: sentenceText(candidate.sentence), reason: "already exists" });
-      continue;
-    }
-    taken.add(text);
-    candidates.push(candidate);
-  }
-  result.candidates = candidates;
+  const fresh = await dropRepeats(userId, considered);
+  result.rejected.push(...fresh.rejected);
+  result.candidates = fresh.candidates;
   return result;
 }
 

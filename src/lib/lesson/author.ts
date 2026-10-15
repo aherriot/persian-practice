@@ -98,7 +98,9 @@ Write up to ${request.count} new sentences.`;
 // --- Review ---
 
 const Verdicts = z.object({
-  verdicts: z.array(z.object({ number: z.number(), natural: z.boolean(), englishCorrect: z.boolean(), problem: z.string() })),
+  verdicts: z.array(
+    z.object({ number: z.number(), natural: z.boolean(), englishCorrect: z.boolean(), repeat: z.boolean(), problem: z.string() }),
+  ),
 });
 
 /**
@@ -107,7 +109,7 @@ const Verdicts = z.object({
  * reviewer does not mention is not kept.
  */
 export async function reviewSentences(
-  candidates: { persian: string; translit: string; english: string; newWord?: string }[],
+  candidates: { persian: string; translit: string; english: string; newWord?: string; similar?: string[] }[],
 ): Promise<{ keep: boolean; problem: string }[]> {
   if (candidates.length === 0) return [];
   const system = `You are a native Tehrani speaker reviewing sentences for a beginner's Persian course. ${REGISTER}
@@ -116,16 +118,22 @@ For each numbered sentence decide:
 - natural: would a native speaker really say this, in this spoken register, with correct grammar and a sensible meaning? Beginner sentences are short and simple, and that is fine. Reject wrong grammar, book-Persian phrasing, odd word order, and sentences that are grammatical but that nobody would say.
 - englishCorrect: is the English an accurate translation?
 - If a line names a new word being taught, also reject it (natural: false) when that word's spelling, pronunciation or meaning is wrong, or when it is a book form rather than what Tehranis say.
+- repeat: does it say essentially the same thing as a sentence the learner already has (listed under it, when there are any) or as an earlier sentence in this list? The same words in another order, or a filler word such as "very", "really" or "too" added or left out, is a repeat. Another word, another person or tense, or a question for a statement is not.
 - problem: a few words on what is wrong, or "" if nothing is.
 Be strict. A wrong sentence taught to a learner is far worse than a rejected good one.`;
   const user = candidates
-    .map((c, i) => `${i + 1}. ${c.persian}  (${c.translit})  =  ${c.english}${c.newWord ? `   [new word: ${c.newWord}]` : ""}`)
+    .map((c, i) => {
+      const line = `${i + 1}. ${c.persian}  (${c.translit})  =  ${c.english}${c.newWord ? `   [new word: ${c.newWord}]` : ""}`;
+      return c.similar?.length ? `${line}\n   The learner already has: ${c.similar.join("; ")}` : line;
+    })
     .join("\n");
 
   const { verdicts } = await askJson("review", Verdicts, system, user);
   return candidates.map((_, i) => {
     const verdict = verdicts.find((v) => v.number === i + 1);
-    return { keep: Boolean(verdict?.natural && verdict.englishCorrect), problem: verdict?.problem ?? "not reviewed" };
+    const keep = Boolean(verdict?.natural && verdict.englishCorrect && !verdict.repeat);
+    const problem = verdict?.repeat && !verdict.problem ? "repeats a sentence the learner has" : (verdict?.problem ?? "not reviewed");
+    return { keep, problem };
   });
 }
 

@@ -13,6 +13,8 @@ export type Candidate = {
   teaches: string | null;
   /** The new word it introduces, which is stored with it. */
   word: Lexeme | null;
+  /** The learner's sentences closest to it, for the reviewer to judge whether it only repeats one (repeats.ts). */
+  similar?: string[];
 };
 
 export type Rejection = { text: string; reason: string };
@@ -23,11 +25,12 @@ export type Draft = { skipped?: string; candidates: Candidate[]; rejected: Rejec
 /** The second opinion: which candidates a fresh reviewer would keep. */
 export async function reviewCandidates(candidates: Candidate[]): Promise<{ kept: Candidate[]; rejected: Rejection[] }> {
   const verdicts = await reviewSentences(
-    candidates.map(({ sentence, word }) => ({
+    candidates.map(({ sentence, word, similar }) => ({
       persian: sentenceText(sentence),
       translit: sentence.tokens.map((t) => t.translit).join(" "),
       english: sentence.english,
       newWord: word ? `${word.fa} (${word.translit}) = ${word.gloss}` : undefined,
+      similar,
     })),
   );
   const kept: Candidate[] = [];

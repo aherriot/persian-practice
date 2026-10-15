@@ -151,13 +151,19 @@ export async function loadWordUses(userId: string, among: SQL = visibleSentence(
 }
 
 /**
- * The learner's sentences made of exactly the same words as one of `wordSets`:
- * all a new sentence can be a repeat of, so the rest need not be read.
+ * The learner's sentences no more than one word away from one of `wordSets`
+ * (one added, or one taken away; the same words count): all a new sentence
+ * can be a repeat or a near repeat of, so the rest need not be read.
  */
-export async function loadSameWords(userId: string, wordSets: string[][]): Promise<Sentence[]> {
+export async function loadNearWords(userId: string, wordSets: string[][]): Promise<Sentence[]> {
   if (wordSets.length === 0) return [];
-  const same = wordSets.map((ids) => sql`(${sentences.lexemeIds} @> ${textArray(ids)} and ${sentences.lexemeIds} <@ ${textArray(ids)})`);
-  return db.select().from(sentences).where(and(visibleSentence(userId), or(...same)));
+  const near = wordSets.map((ids) => {
+    const set = textArray(ids);
+    const shared = sql`cardinality(array(select unnest(${sentences.lexemeIds}) intersect select unnest(${set})))`;
+    // Word ids in a sentence are distinct, so the words one has and the other lacks number |a| + |b| - 2·shared.
+    return sql`(${sentences.lexemeIds} && ${set} and cardinality(${sentences.lexemeIds}) + ${ids.length}::int - 2 * ${shared} <= 1)`;
+  });
+  return db.select().from(sentences).where(and(visibleSentence(userId), or(...near)));
 }
 
 /** Takes a generated sentence the learner was shown out of circulation. Hand-written sentences are left alone. */

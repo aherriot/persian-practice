@@ -7,9 +7,10 @@ import { normalizeForCompare } from "@/lib/normalize";
 import { assembleSentence, type Assembled } from "./assemble";
 import { draftSentences } from "./author";
 import { reviewCandidates, type Candidate, type Draft, type Rejection } from "./drafts";
+import { dropRepeats } from "./repeats";
 import { sentenceClip, sentenceText } from "./plan";
 import { isFluent, measureProgress } from "./progress";
-import { allIn, knownIds, loadCourse, loadKnowledge, loadSameWords, loadWordUses, textArray, visibleSentence } from "./store";
+import { allIn, knownIds, loadCourse, loadKnowledge, loadWordUses, textArray, visibleSentence } from "./store";
 import type { Sentence } from "./types";
 import { workingVocabulary } from "./vocabulary";
 
@@ -160,18 +161,11 @@ export async function draftPractice(userId: string, opts: TopUpOptions = {}, aut
     if (result.ok) assembled.push(result.sentence);
     else rejected.push({ text: draft.english, reason: result.reason });
   }
-  const taken = new Set((await loadSameWords(userId, assembled.map((s) => s.lexemeIds))).map(plainText));
-  const candidates: Candidate[] = [];
-  for (const sentence of assembled.slice(0, allowance)) {
-    const text = plainText(sentence);
-    if (taken.has(text)) {
-      rejected.push({ text: sentenceText(sentence), reason: "already exists" });
-      continue;
-    }
-    taken.add(text);
-    candidates.push({ sentence, teaches: null, word: null });
-  }
-  return { candidates, rejected };
+  const fresh = await dropRepeats(
+    userId,
+    assembled.slice(0, allowance).map((sentence) => ({ sentence, teaches: null, word: null })),
+  );
+  return { candidates: fresh.candidates, rejected: [...rejected, ...fresh.rejected] };
 }
 
 /**

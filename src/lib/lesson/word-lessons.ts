@@ -10,7 +10,8 @@ import type { Candidate, Draft, Rejection } from "./drafts";
 import { generatedToday, GLOBAL_DAILY_CAP, storePractice } from "./generate";
 import { sentenceClip, sentenceText } from "./plan";
 import { isFluent, measureProgress, type Progress } from "./progress";
-import { loadCourse, loadKnowledge, loadSameWords, loadWordUses } from "./store";
+import { dropRepeats } from "./repeats";
+import { loadCourse, loadKnowledge, loadWordUses } from "./store";
 import type { Lexeme } from "./types";
 import { workingVocabulary } from "./vocabulary";
 import { myWordsThemeId, ownedLexeme, validateWord } from "./words";
@@ -131,18 +132,8 @@ export async function draftLessonsFor(userId: string, lexemeId: string, author =
   });
 
   // Nothing the learner already has.
-  const plain = (s: Candidate["sentence"]) => normalizeForCompare(s.tokens.map((t) => t.fa).join(" "));
-  const taken = new Set((await loadSameWords(userId, draft.candidates.map((c) => c.sentence.lexemeIds))).map(plain));
-  const candidates = draft.candidates.filter((c) => {
-    const text = plain(c.sentence);
-    if (taken.has(text)) {
-      draft.rejected.push({ text: sentenceText(c.sentence), reason: "already exists" });
-      return false;
-    }
-    taken.add(text);
-    return true;
-  });
-  return { candidates, rejected: draft.rejected };
+  const fresh = await dropRepeats(userId, draft.candidates);
+  return { candidates: fresh.candidates, rejected: [...draft.rejected, ...fresh.rejected] };
 }
 
 /**
