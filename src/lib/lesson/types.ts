@@ -129,6 +129,9 @@ export type DisplaySentence = {
   generated: boolean;
 };
 
+/** What a graded exercise is about, and how well each skill of it was known when the session was planned (see mastery.ts). */
+export type ExerciseSubject = { fa: string | null; label: string; skills: Record<Skill, SkillState> };
+
 type Graded = {
   key: string;
   sentence: DisplaySentence;
@@ -136,6 +139,8 @@ type Graded = {
   primary: Target | null;
   /** Everything else the sentence exercises; only advanced if already due. */
   others: Target[];
+  /** Present with `primary`. */
+  subject?: ExerciseSubject;
 };
 
 export type IntroLexemeExercise = {
