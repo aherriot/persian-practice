@@ -2,7 +2,7 @@
 // an answer and moves the schedule, and what it does when an answer arrives
 // twice or two arrive together.
 import assert from "node:assert/strict";
-import { after, before, beforeEach, test } from "node:test";
+import { after, before, beforeEach, describe, test } from "node:test";
 import { and, eq } from "drizzle-orm";
 import { closeTestDb, createTestDb, emptyTestDb, type TestDb } from "../db/test-db.ts";
 import { knowledge, lexemes, reviewLog, sentences, users } from "../db/schema.ts";
@@ -223,4 +223,53 @@ test("what is said back is marked against the sentences that answer what was hea
   assert.deepEqual(await recordAnswer(ME, say("fa-pear."), "k2", new Date(NOW.getTime() + 60_000)), { ok: true, correct: true, duplicate: false });
   // Reading was not what was tested.
   assert.equal((await state("apple", "reading")).lapses, 0);
+});
+
+describe("I already know this", () => {
+  const FIG = "figs";
+  beforeEach(async () => {
+    await db.insert(lexemes).values({ id: "fig", fa: "fa-fig", voc: "voc-fig", translit: "fig", gloss: "gloss fig" });
+    await db.insert(sentences).values({
+      id: FIG,
+      themeId: null,
+      position: 1,
+      english: "apple fig",
+      tokens: ["apple", "fig"].map((id) => ({ lexemeId: id, fa: `fa-${id}`, voc: `voc-${id}`, translit: id })),
+      endPunct: ".",
+      lexemeIds: ["apple", "fig"],
+    });
+  });
+  const claim = (answer: string): Submission => ({ sentenceId: FIG, exercise: "pick-word", primary: { kind: "lexeme", id: "fig" }, answer, claim: true });
+
+  test("proved, a word starts well established in every skill", async () => {
+    assert.deepEqual(await recordAnswer(ME, claim("fa-fig"), "c1", NOW), { ok: true, correct: true, duplicate: false });
+    for (const skill of SKILLS) {
+      const row = await state("fig", skill);
+      assert.equal(row.repetitions, 1, skill);
+      assert.ok(row.stability > 15, skill);
+      assert.ok(row.dueAt.getTime() > NOW.getTime() + 14 * DAY, skill);
+    }
+    assert.equal((await logged()).filter((r) => r.target === "lexeme:fig").length, 1);
+  });
+
+  test("not proved, it is met as usual", async () => {
+    assert.equal((await recordAnswer(ME, claim("fa-pear"), "c1", NOW)).ok, true);
+    for (const skill of SKILLS) {
+      const row = await state("fig", skill);
+      assert.equal(row.stability, 0, skill);
+      assert.equal(row.lapses, 0, skill);
+    }
+  });
+
+  test("a claim arriving twice is applied once, and never overwrites a word already answered", async () => {
+    await recordAnswer(ME, claim("fa-fig"), "c1", NOW);
+    const first = await state("fig", "reading");
+    assert.equal((await recordAnswer(ME, claim("fa-fig"), "c1", new Date(NOW.getTime() + DAY))).ok, true);
+    assert.deepEqual(await state("fig", "reading"), first);
+
+    // Apple has been answered before: a claim on it changes nothing.
+    const apple = await state("apple", "reading");
+    await recordAnswer(ME, { ...claim("fa-apple"), primary: { kind: "lexeme", id: "apple" } }, "c2", NOW);
+    assert.deepEqual(await state("apple", "reading"), apple);
+  });
 });

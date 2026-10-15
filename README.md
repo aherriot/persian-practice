@@ -158,7 +158,10 @@ in up to twice as much new material a session, moves exercises from
 recognising to producing sooner, and has the app write new material earlier and
 in bigger batches. Harder work brings mistakes, and the stretch eases off with
 them. After each answer the learner sees how well they know the word in each
-skill (Learning, Familiar, Strong, Mastered) and when it comes back.
+skill (Learning, Familiar, Strong, Mastered) and when it comes back. A word or
+grammar point about to be taught can be claimed instead: "I already know this"
+asks for it once, the hard way, and a right answer starts it at Strong in every
+skill and drops the rest of its teaching from the session.
 
 **A word the learner adds becomes lessons at their level.** It is met alone at
 the start of their next session. Then the author writes sentences that use it,

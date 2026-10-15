@@ -108,6 +108,24 @@ function stabilityAfterLapse(difficulty: number, stability: number, recall: numb
   return clamp(Math.min(relearned, stability), MIN_STABILITY, 36500);
 }
 
+/**
+ * An item the learner showed they knew already, the moment they met it: what
+ * FSRS gives a first answer rated Easy. About two weeks to the next review.
+ */
+export function alreadyKnown(now: Date): SrsUpdate {
+  const stability = W[EASY - 1];
+  const intervalDays = intervalFor(stability);
+  return {
+    stability,
+    difficulty: initialDifficulty(EASY),
+    intervalDays,
+    repetitions: 1,
+    lapses: 0,
+    dueAt: new Date(now.getTime() + intervalDays * DAY_MS),
+    lastReviewedAt: now,
+  };
+}
+
 /** One review. `now` is injectable for tests; defaults to the real clock in production call sites. */
 export function reviewItem(state: SrsState, grade: Grade, now: Date = new Date()): SrsUpdate {
   const rating = RATING[grade];
