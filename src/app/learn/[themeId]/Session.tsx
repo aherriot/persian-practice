@@ -7,9 +7,22 @@ import { Correct } from "@/components/Correct";
 import { OrsiWindow } from "@/components/OrsiWindow";
 import { playAudio, preloadAudio, unlockAudio } from "@/lib/audio-client";
 import { lessonOutbox, type OutboxStatus } from "@/lib/lesson/outbox";
-import { exerciseName, type ChoiceExercise, type Exercise, type SessionPlan, type TilesExercise } from "@/lib/lesson/types";
+import { changeFrom, describeChange, type Change } from "@/lib/lesson/mastery";
+import {
+  EXERCISE_SKILL,
+  exerciseName,
+  targetKey,
+  type ChoiceExercise,
+  type Exercise,
+  type ExerciseSubject,
+  type SessionPlan,
+  type Skill,
+  type SkillState,
+  type TilesExercise,
+} from "@/lib/lesson/types";
 import { normalizeForCompare } from "@/lib/normalize";
 import { SentenceView, SpeakButton, shown } from "./Persian";
+import { MasteryLine, Meters } from "./Mastery";
 import { NewHeader, TaskHeader } from "./Task";
 
 const PRELOAD_AHEAD = 3;
@@ -30,6 +43,11 @@ function openingAudio(exercise: Exercise): string | null {
   if (exercise.variant === "listen" || exercise.variant === "reply-heard") return exercise.sentence.audioUrl;
   if (exercise.variant === "hear-word" || exercise.variant === "hear-pick") return exercise.wordAudioUrl ?? null;
   return null;
+}
+
+/** This session's answers so far to the skills of one thing, by `${targetKey}|${skill}`. */
+function currentSkills(states: Map<string, SkillState>, key: string): Partial<Record<Skill, SkillState>> {
+  return Object.fromEntries([...states].filter(([k]) => k.startsWith(`${key}|`)).map(([k, state]) => [k.slice(key.length + 1), state]));
 }
 
 const count = (n: number, noun: string) => `${n} ${noun}${n === 1 ? "" : "s"}`;
@@ -65,6 +83,12 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
   // Said alongside "Correct" when the answer was right but not the model answer.
   const [remark, setRemark] = useState<string | null>(null);
   const [score, setScore] = useState({ right: 0, total: 0 });
+  // Each answer's effect on the skill it tested, worked out here as the server
+  // will, so it shows at once and later exercises start from it.
+  const [skillStates, setSkillStates] = useState<Map<string, SkillState>>(new Map());
+  const [change, setChange] = useState<{ skill: Skill; change: Change; summary: string } | null>(null);
+  // What got better this session, for the end.
+  const [improved, setImproved] = useState<Map<string, ExerciseSubject>>(new Map());
   const [leaving, setLeaving] = useState(false);
 
   // Answers are saved in the background, in order, and kept on this device
@@ -98,6 +122,7 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
     (next: number) => {
       setAnswered(null);
       setRemark(null);
+      setChange(null);
       setIndex(next);
       const opening = next < queue.length ? openingAudio(queue[next]) : null;
       if (opening) void playAudio(opening);
@@ -113,6 +138,18 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
       setAnswered(correct);
       setRemark(note ?? null);
       const isRetry = exercise.key.endsWith("-retry");
+      if (!isRetry && exercise.primary && exercise.subject) {
+        const skill = EXERCISE_SKILL[exerciseName(exercise)];
+        const key = targetKey(exercise.primary);
+        const skills = { ...exercise.subject.skills, ...currentSkills(skillStates, key) };
+        const now = new Date();
+        const result = changeFrom(skills[skill], exercise.primary, correct, now);
+        const after = { ...skills, [skill]: result.after };
+        setSkillStates((states) => new Map(states).set(`${key}|${skill}`, result.after));
+        setChange({ skill, change: result, summary: describeChange(skill, result, now) });
+        // Kept up to date once it has gone up, so the end shows where it finished.
+        if (result.to > result.from || improved.has(key)) setImproved((words) => new Map(words).set(key, { ...exercise.subject!, skills: after }));
+      }
       if (!isRetry) {
         setScore((s) => ({ right: s.right + (correct ? 1 : 0), total: s.total + 1 }));
         // `correct` is this page's own marking, for showing at once. The server marks the answer again and stores that.
@@ -132,7 +169,7 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
         void playAudio(exercise.sentence.audioUrl);
       }
     },
-    [exercise, save],
+    [exercise, save, skillStates, improved],
   );
 
   const acknowledge = useCallback(() => {
@@ -186,6 +223,24 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
             {score.total > 0 && plan.newCount > 0 && " · "}
             {plan.newCount > 0 && `you met ${newThings(plan)}`}
           </p>
+          {improved.size > 0 && (
+            <div className="flex w-full max-w-xs flex-col gap-2 text-left">
+              <p className="text-xs font-semibold uppercase tracking-widest text-ink/50">Getting stronger</p>
+              {[...improved.values()].slice(0, 8).map((subject) => (
+                <div key={`${subject.fa}${subject.label}`} className="flex items-center justify-between gap-3 border-b border-ink/10 pb-1.5">
+                  <p className="min-w-0 truncate text-sm text-ink">
+                    {subject.fa && (
+                      <span dir="rtl" lang="fa" className="mr-2 text-base">
+                        {subject.fa}
+                      </span>
+                    )}
+                    {subject.label}
+                  </p>
+                  <Meters skills={subject.skills} />
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex items-center gap-6">
             {/* A full page load, so the server plans the next session from the saved answers: wait for the last of them. */}
             <a
@@ -266,6 +321,17 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
                 {answered ? "Correct" : "Not quite"}
               </p>
               {remark && <p className="mt-1 text-sm text-ink/75">{remark}</p>}
+              {change && exercise.subject && (
+                <div className="mt-1.5">
+                  <MasteryLine
+                    subject={exercise.subject}
+                    skills={{ ...exercise.subject.skills, ...currentSkills(skillStates, targetKey(exercise.primary!)) }}
+                    tested={change.skill}
+                    was={change.change.from}
+                    summary={change.summary}
+                  />
+                </div>
+              )}
               <div className="mt-1 flex items-start justify-between gap-3">
                 <div>
                   <SentenceView sentence={exercise.sentence} revealMeaning className="text-2xl" />
@@ -287,8 +353,8 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
                 </div>
               )}
               <div className="mt-2 flex flex-wrap items-start gap-x-4 gap-y-1">
-                {exercise.sentence.generated && <ReportSentence key={exercise.key} sentenceId={exercise.sentence.id} />}
                 <Correct subject={{ kind: "sentence", id: exercise.sentence.id }} own={exercise.sentence.generated} after={FIXED_LATER} />
+                {exercise.sentence.generated && <ReportSentence key={exercise.key} sentenceId={exercise.sentence.id} />}
               </div>
             </div>
           )}
@@ -321,7 +387,7 @@ function ReportSentence({ sentenceId }: { sentenceId: string }) {
         }).catch(() => {});
       }}
     >
-      Written by the app. Sounds wrong? Remove it
+      Written by the app: remove it
     </button>
   );
 }

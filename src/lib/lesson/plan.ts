@@ -1,5 +1,6 @@
 import { audioUrl, clipSpec, wordClip, type ClipSpec } from "@/lib/audio-key";
 import { applyForm, FORM_ASK, formsFor, formToken } from "./forms";
+import { introducedState } from "./grade";
 import { otherReadings, soundDistance } from "./sounds";
 import { acceptedAnswers, spokenWords } from "./variants";
 import {
@@ -13,6 +14,7 @@ import {
   type SessionPlan,
   type Skill,
   type SkillState,
+  type ExerciseSubject,
   type Target,
   type ThemeContent,
   type TilesExercise,
@@ -197,12 +199,21 @@ export function planSession(
     generated: s.generated,
   });
 
+  // Something introduced in this session is not in `knowledge` yet: it starts new in every skill.
+  const subjectOf = (target: Target): ExerciseSubject => {
+    const skills = (knowledge.get(targetKey(target)) ?? introducedState(now)).skills;
+    if (target.kind === "pattern") return { fa: null, label: content.patterns.get(target.id)?.title ?? "", skills };
+    const lexeme = content.lexemes.get(target.id);
+    return { fa: lexeme?.voc ?? null, label: lexeme?.gloss ?? "", skills };
+  };
+
   const graded = (s: Sentence, primary: Target | null) => {
     usedSentences.add(s.id);
     return {
       sentence: display(s),
       primary,
       others: componentsOf(s).filter((c) => !primary || targetKey(c) !== targetKey(primary)),
+      ...(primary ? { subject: subjectOf(primary) } : {}),
     };
   };
 
