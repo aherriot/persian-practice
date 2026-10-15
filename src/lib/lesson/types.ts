@@ -143,12 +143,21 @@ type Graded = {
   subject?: ExerciseSubject;
 };
 
+/**
+ * "I already know this": one question that asks for the thing, in place of
+ * being taught it. Right, and it starts well established in every skill and
+ * the rest of its teaching (`skip`, by key) is dropped from the session;
+ * wrong, and it is taught as usual.
+ */
+export type Claim = { check: ChoiceExercise | TilesExercise; skip: string[] };
+
 export type IntroLexemeExercise = {
   type: "intro-lexeme";
   key: string;
   target: Target;
   lexeme: Lexeme & { audioUrl: string };
   sentence: DisplaySentence;
+  claim?: Claim;
 };
 
 export type IntroPatternExercise = {
@@ -157,6 +166,7 @@ export type IntroPatternExercise = {
   target: Target;
   pattern: Pattern;
   sentence: DisplaySentence;
+  claim?: Claim;
 };
 
 /**

@@ -3,7 +3,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import { db } from "@/lib/db";
 import { knowledge, lexemes, patterns, reviewLog, sentences, themes } from "@/lib/db/schema";
 import { checkAnswer, type Submission } from "./check";
-import { applyAnswer, introducedSkill } from "./grade";
+import { applyAnswer, introducedSkill, knownSkill } from "./grade";
 import { componentsOf } from "./plan";
 import {
   EXERCISE_SKILL,
@@ -256,6 +256,9 @@ export async function recordAnswer(userId: string, submission: Submission, key: 
   );
   if (!verdict.ok) return verdict;
   const updates = applyAnswer(states, verdict.primary, verdict.others, verdict.correct, now);
+  // What was claimed is set below, in every skill, not moved like the rest.
+  const claimed = submission.claim && verdict.primary ? verdict.primary : null;
+  if (claimed) updates.delete(targetKey(claimed));
 
   // One statement, so the log entry and the schedule changes happen together or
   // not at all (the HTTP driver has no transactions to hold them together
@@ -290,7 +293,34 @@ export async function recordAnswer(userId: string, submission: Submission, key: 
             and exists (select 1 from logged)
           returning 1
         )`;
-  const result = await db.execute<{ logged: number }>(sql`with logged as (${logged})${moved} select count(*)::int as "logged" from logged`);
+  // Known already: it starts well established in every skill, replacing an
+  // introduction that has not been answered yet. Not known: it is met as usual.
+  const claim = !claimed
+    ? sql``
+    : (() => {
+        const state = verdict.correct ? knownSkill(now) : introducedSkill(now);
+        const rows = SKILLS.map(
+          (skill) => sql`(${crypto.randomUUID()}, ${userId}, ${claimed.kind}, ${claimed.id}, ${skill}, ${state.stability}::real,
+            ${state.difficulty}::real, ${state.intervalDays}::real, ${state.repetitions}::int, ${state.lapses}::int,
+            ${state.dueAt.toISOString()}::timestamp, ${state.lastReviewedAt?.toISOString() ?? null}::timestamp)`,
+        );
+        return sql`, claimed as (
+          insert into ${knowledge} as k ("id", "userId", "kind", "refId", "skill", "stability", "difficulty", "intervalDays", "repetitions",
+            "lapses", "dueAt", "lastReviewedAt")
+          select * from (values ${sql.join(rows, sql`, `)}) as v
+          where exists (select 1 from logged)
+          on conflict ("userId", "kind", "refId", "skill") do ${
+            verdict.correct
+              ? sql`update set "stability" = excluded."stability", "difficulty" = excluded."difficulty", "intervalDays" = excluded."intervalDays",
+                  "repetitions" = excluded."repetitions", "lapses" = excluded."lapses", "dueAt" = excluded."dueAt",
+                  "lastReviewedAt" = excluded."lastReviewedAt"
+                where k."stability" = 0`
+              : sql`nothing`
+          }
+          returning 1
+        )`;
+      })();
+  const result = await db.execute<{ logged: number }>(sql`with logged as (${logged})${moved}${claim} select count(*)::int as "logged" from logged`);
   return { ok: true, correct: verdict.correct, duplicate: result.rows[0].logged === 0 };
 }
 

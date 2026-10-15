@@ -1,4 +1,4 @@
-import { NEW_ITEM_STATE, reviewItem, type Grade } from "@/lib/srs";
+import { alreadyKnown, NEW_ITEM_STATE, reviewItem, type Grade } from "@/lib/srs";
 import { evenly, targetKey, type KnowledgeState, type SkillState, type Target } from "./types";
 
 const HOUR = 60 * 60 * 1000;
@@ -12,6 +12,12 @@ const DUE_SLACK_MS = 8 * HOUR;
 
 export function introducedSkill(now: Date): SkillState {
   return { ...NEW_ITEM_STATE, dueAt: now };
+}
+
+/** One skill of something the learner showed they knew when they met it (see `claim` in types.ts). */
+export function knownSkill(now: Date): SkillState {
+  const state = alreadyKnown(now);
+  return { ...state, dueAt: new Date(state.dueAt.getTime() - DUE_SLACK_MS) };
 }
 
 /** Something just met: new, and due, in every skill. */

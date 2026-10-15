@@ -18,6 +18,8 @@ const Body = z.union([
     exercise: z.enum(EXERCISES),
     primary: Target.nullable(),
     answer: z.union([z.string().max(500), z.array(z.string().max(100)).max(40)]),
+    // "I already know this", proved by this answer (see Claim in src/lib/lesson/types.ts).
+    claim: z.literal(true).optional(),
   }),
 ]);
 

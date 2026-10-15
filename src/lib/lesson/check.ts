@@ -14,6 +14,8 @@ export type Submission = {
   primary: Target | null;
   /** The option picked, or for sentence-building the words in the order they were placed. */
   answer: string | string[];
+  /** Answered to show the learner knew `primary` already, when it was about to be taught (see Claim in types.ts). */
+  claim?: boolean;
 };
 
 export type Verdict =

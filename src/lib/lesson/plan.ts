@@ -8,6 +8,7 @@ import {
   SKILLS,
   targetKey,
   type ChoiceExercise,
+  type Claim,
   type DisplaySentence,
   type Exercise,
   type KnowledgeState,
@@ -506,8 +507,20 @@ export function planSession(
     for (const target of unknown) {
       known.add(targetKey(target));
       newCount++;
+      // Whether the learner knew it already is asked the hard way: come up with
+      // the word from its meaning, or build the sentence that shows the grammar.
+      const claimFor = (check: ChoiceExercise | TilesExercise, teaching: Exercise[]): Claim => ({
+        check: { ...check, key: `${check.key}-claim` },
+        skip: teaching.map((e) => e.key),
+      });
       if (target.kind === "lexeme") {
         const lexeme = content.lexemes.get(target.id)!;
+        const checks: Exercise[] = [
+          // Recognising a word just shown is near certain; a learner getting most things right skips it.
+          ...(stretch >= 0.5 ? [] : [wordChoice(s, target.id, "read-word")]),
+          meaningChoice(s, target, "listen"),
+        ];
+        const later = s.tokens.length >= 2 ? tiles(s, target) : pickWord(s, target.id);
         blocks.push([
           {
             type: "intro-lexeme",
@@ -515,13 +528,14 @@ export function planSession(
             target,
             lexeme: { ...lexeme, audioUrl: audioUrl(wordClip(lexeme)) },
             sentence: display(s),
+            claim: claimFor(pickWord(s, target.id), [...checks, later]),
           },
-          // Recognising a word just shown is near certain; a learner getting most things right skips it.
-          ...(stretch >= 0.5 ? [] : [wordChoice(s, target.id, "read-word")]),
-          meaningChoice(s, target, "listen"),
+          ...checks,
         ]);
-        deferred.push(s.tokens.length >= 2 ? tiles(s, target) : pickWord(s, target.id));
+        deferred.push(later);
       } else {
+        const check = meaningChoice(s, target, "read");
+        const later = [meaningChoice(s, target, "listen"), tiles(s, target)];
         blocks.push([
           {
             type: "intro-pattern",
@@ -529,10 +543,11 @@ export function planSession(
             target,
             pattern: content.patterns.get(target.id)!,
             sentence: display(s),
+            claim: s.tokens.length >= 2 ? claimFor(tiles(s, target), [check, ...later]) : undefined,
           },
-          meaningChoice(s, target, "read"),
+          check,
         ]);
-        deferred.push(meaningChoice(s, target, "listen"), tiles(s, target));
+        deferred.push(...later);
       }
     }
   }

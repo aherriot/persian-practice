@@ -7,12 +7,15 @@ import { Correct } from "@/components/Correct";
 import { OrsiWindow } from "@/components/OrsiWindow";
 import { playAudio, preloadAudio, unlockAudio } from "@/lib/audio-client";
 import { lessonOutbox, type OutboxStatus } from "@/lib/lesson/outbox";
-import { changeFrom, describeChange, type Change } from "@/lib/lesson/mastery";
+import { introducedSkill, knownSkill } from "@/lib/lesson/grade";
+import { changeFrom, describeChange, LEVELS, masteryOf, whenNext, type Change } from "@/lib/lesson/mastery";
 import {
   EXERCISE_SKILL,
   exerciseName,
+  SKILLS,
   targetKey,
   type ChoiceExercise,
+  type Claim,
   type Exercise,
   type ExerciseSubject,
   type SessionPlan,
@@ -89,6 +92,8 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
   const [change, setChange] = useState<{ skill: Skill; change: Change; summary: string } | null>(null);
   // What got better this session, for the end.
   const [improved, setImproved] = useState<Map<string, ExerciseSubject>>(new Map());
+  // Questions standing in for an introduction, after "I already know this", by their key.
+  const [claims, setClaims] = useState<Map<string, Claim>>(new Map());
   const [leaving, setLeaving] = useState(false);
 
   // Answers are saved in the background, in order, and kept on this device
@@ -137,6 +142,31 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
       if (!exercise || exercise.type === "intro-lexeme" || exercise.type === "intro-pattern") return;
       setAnswered(correct);
       setRemark(note ?? null);
+      const claim = claims.get(exercise.key);
+      if (claim && exercise.primary && exercise.subject) {
+        // "I already know this": right, and it starts well established, its teaching dropped; wrong, and it is taught as usual.
+        const now = new Date();
+        const state = correct ? knownSkill(now) : introducedSkill(now);
+        const skills = { listening: state, reading: state, producing: state };
+        const key = targetKey(exercise.primary);
+        setSkillStates((states) => new Map([...states, ...SKILLS.map((skill) => [`${key}|${skill}`, state] as const)]));
+        const fresh = exercise.subject.skills.producing;
+        setChange({
+          skill: "producing",
+          change: { before: fresh, after: state, from: 0, to: masteryOf(state), early: false },
+          summary: correct
+            ? `You knew it: ${LEVELS[masteryOf(state)]} in every skill. Back ${whenNext(state.dueAt, now)}.`
+            : "Not yet, so it is taught from here.",
+        });
+        setScore((s) => ({ right: s.right + (correct ? 1 : 0), total: s.total + 1 }));
+        save({ sentenceId: exercise.sentence.id, exercise: exerciseName(exercise), primary: exercise.primary, answer, claim: true });
+        if (correct) {
+          setImproved((words) => new Map(words).set(key, { ...exercise.subject!, skills }));
+          setQueue((q) => q.filter((e, i) => i <= index || !claim.skip.includes(e.key)));
+        }
+        void playAudio(exercise.sentence.audioUrl);
+        return;
+      }
       const isRetry = exercise.key.endsWith("-retry");
       if (!isRetry && exercise.primary && exercise.subject) {
         const skill = EXERCISE_SKILL[exerciseName(exercise)];
@@ -169,8 +199,16 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
         void playAudio(exercise.sentence.audioUrl);
       }
     },
-    [exercise, save, skillStates, improved],
+    [exercise, save, skillStates, improved, claims, index],
   );
+
+  /** Swaps the introduction for the question that shows the learner knew it already. */
+  const claimKnown = useCallback(() => {
+    if ((exercise?.type !== "intro-lexeme" && exercise?.type !== "intro-pattern") || !exercise.claim) return;
+    const { check } = exercise.claim;
+    setClaims((all) => new Map(all).set(check.key, exercise.claim!));
+    setQueue((q) => q.map((e, i) => (i === index ? check : e)));
+  }, [exercise, index]);
 
   const acknowledge = useCallback(() => {
     if (exercise?.type === "intro-lexeme" || exercise?.type === "intro-pattern") save({ introduce: exercise.target });
@@ -360,9 +398,16 @@ export function Session({ plan, href, userId }: { plan: SessionPlan; href: strin
           )}
           {canContinue && (
             // Pinned to the bottom of the screen, so a long answer never pushes it out of reach.
-            <Button autoFocus className="sticky bottom-3 self-end shadow-md" onClick={answered !== null ? advance : acknowledge}>
-              {answered !== null ? "Continue" : "Got it"}
-            </Button>
+            <div className="sticky bottom-3 flex items-center justify-end gap-3">
+              {answered === null && (exercise.type === "intro-lexeme" || exercise.type === "intro-pattern") && exercise.claim && (
+                <button type="button" onClick={claimKnown} className="rounded bg-paper/90 px-1 text-sm font-medium text-cobalt underline underline-offset-4 hover:text-ink">
+                  I already know this
+                </button>
+              )}
+              <Button autoFocus className="shadow-md" onClick={answered !== null ? advance : acknowledge}>
+                {answered !== null ? "Continue" : "Got it"}
+              </Button>
+            </div>
           )}
         </div>
       </div>
