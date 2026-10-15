@@ -1,6 +1,7 @@
 import { audioUrl, clipSpec, wordClip, type ClipSpec } from "@/lib/audio-key";
 import { applyForm, FORM_ASK, formsFor, formToken } from "./forms";
 import { introducedState } from "./grade";
+import { aheadBy, newPerSession } from "./pace";
 import { otherReadings, soundDistance } from "./sounds";
 import { acceptedAnswers, spokenWords } from "./variants";
 import {
@@ -41,6 +42,8 @@ export type PlanOptions = {
    * come back in every session until it fell due.
    */
   recent?: Set<string>;
+  /** How hard to push the learner, 0 to 1 (pace.ts). Sets the default `maxNew`, and how soon exercises get harder. */
+  stretch?: number;
   minExercises?: number;
   /** How many times the learner has answered each sentence. Reviews prefer the least seen. */
   seen?: Map<string, number>;
@@ -74,8 +77,8 @@ export const DEFAULT_MAX_REVIEW = 8;
 export const roomForNew = (reviews: number, maxNew: number, maxReview: number) =>
   maxReview <= 0 ? maxNew : Math.max(0, Math.ceil(maxNew * (1 - reviews / maxReview)));
 
-/** One skill of one word or grammar point, up for review. */
-export type Due = { key: string; skill: Skill; state: SkillState };
+/** One skill of one word or grammar point, up for review. `early`: weak, and brought up before it is due. */
+export type Due = { key: string; skill: Skill; state: SkillState; early?: boolean };
 
 /** Where equally due skills of one thing start from: spread by the thing, so a session is not all of one skill. */
 const firstSkill = (key: string) => [...key].reduce((sum, char) => sum + char.charCodeAt(0), 0) % SKILLS.length;
@@ -114,7 +117,10 @@ export function dueTargets(
   const early = weak.flatMap((key) => {
     const state = knowledge.get(key);
     if (!state || recent.has(key) || first.some((item) => item.key === key)) return [];
-    return skillsOf(key, state).sort(weakest).slice(0, 1);
+    return skillsOf(key, state)
+      .sort(weakest)
+      .slice(0, 1)
+      .map((item) => ({ ...item, early: true }));
   });
   return [...first, ...early, ...again].slice(0, max);
 }
@@ -158,7 +164,7 @@ export function planSession(
   knowledge: Map<string, KnowledgeState>,
   opts: PlanOptions,
 ): SessionPlan {
-  const { now, maxNew = DEFAULT_MAX_NEW, maxReview = DEFAULT_MAX_REVIEW, minExercises = 6 } = opts;
+  const { now, stretch = 0, maxNew = newPerSession(stretch, DEFAULT_MAX_NEW), maxReview = DEFAULT_MAX_REVIEW, minExercises = 6 } = opts;
   const distractors: Distractor[] =
     opts.distractors ?? content.sentences.map((s) => ({ english: s.english, length: s.tokens.length }));
   const withAlternates = opts.alternates ? { ...content, sentences: [...content.sentences, ...opts.alternates] } : content;
@@ -424,23 +430,25 @@ export function planSession(
   // --- Reviews: decided before anything new is marked known, so a review
   // never leans on a word introduced later in the same session. ---
   const due = dueTargets(knowledge, now, maxReview, opts.weak, opts.recent);
+  const ahead = aheadBy(stretch);
 
-  const reviews: Exercise[] = [];
-  for (const { key, skill, state } of due) {
+  /** An exercise on one skill of something the learner has met, or null if nothing here can ask about it. */
+  const review = ({ key, skill, state }: Due): Exercise | null => {
     const kind = key.slice(0, key.indexOf(":")) as Target["kind"];
     const id = key.slice(key.indexOf(":") + 1);
     const target: Target = { kind, id };
     const containing = content.sentences.filter(
       (s) => isEligible(s) && (kind === "lexeme" ? s.lexemeIds : s.patternIds).includes(id),
     );
-    if (containing.length === 0) continue; // belongs to another theme
+    if (containing.length === 0) return null; // belongs to another theme
     const fresh = containing.filter((s) => !usedSentences.has(s.id));
     const candidates = fresh.length > 0 ? fresh : containing;
     // There is nothing to build in a sentence of one word.
     const longer = candidates.filter((s) => s.tokens.length >= 2);
     const ordered = leastSeen(skill === "producing" && longer.length > 0 ? longer : candidates);
     const word = kind === "lexeme";
-    const reps = state.repetitions;
+    // A learner getting nearly everything right is asked the harder ways sooner.
+    const reps = state.repetitions + ahead;
     const coin = rand() < 0.5;
 
     // Ways of asking that only some sentences allow are tried first, in the
@@ -452,10 +460,7 @@ export function planSession(
     } else if (skill !== "producing" && reps >= 1 && coin) {
       for (const candidate of ordered) if ((special = reply(candidate, target, skill === "listening" ? "reply-heard" : "reply-read"))) break;
     }
-    if (special) {
-      reviews.push(special);
-      continue;
-    }
+    if (special) return special;
     const s = ordered[0];
     const multiWord = s.tokens.length >= 2;
 
@@ -463,19 +468,26 @@ export function planSession(
     // own ways of asking, and the ways get harder as the word settles.
     if (skill === "listening") {
       const alone = word && saidAlone(id);
-      if (alone && reps <= 1 && coin) reviews.push(wordChoice(s, id, "hear-word"));
-      else if (alone && reps === 2 && coin) reviews.push(hearPick(s, id));
-      else if (reps >= VOWEL_FADE_REPS && multiWord && coin) reviews.push(tiles(s, target, "dictation"));
-      else reviews.push(meaningChoice(s, target, "listen"));
-    } else if (skill === "reading") {
+      if (alone && reps <= 1 && coin) return wordChoice(s, id, "hear-word");
+      if (alone && reps === 2 && coin) return hearPick(s, id);
+      if (reps >= VOWEL_FADE_REPS && multiWord && coin) return tiles(s, target, "dictation");
+      return meaningChoice(s, target, "listen");
+    }
+    if (skill === "reading") {
       // Once its vowel marks are gone, whether the word can still be sounded out is worth asking.
       const sounding = word && reps >= VOWEL_FADE_REPS && coin ? pronounce(s, id) : null;
-      if (sounding) reviews.push(sounding);
-      else reviews.push(word && reps <= 1 && coin ? wordChoice(s, id, "read-word") : meaningChoice(s, target, "read"));
-    } else if (word && (reps <= 1 || !multiWord)) reviews.push(pickWord(s, id));
-    else if (word && reps === 2) reviews.push(cloze(s, id));
-    else reviews.push(tiles(s, target));
-  }
+      if (sounding) return sounding;
+      return word && reps <= 1 && coin ? wordChoice(s, id, "read-word") : meaningChoice(s, target, "read");
+    }
+    if (word && (reps <= 1 || !multiWord)) return pickWord(s, id);
+    if (word && reps === 2) return cloze(s, id);
+    return tiles(s, target);
+  };
+
+  // What is due now. Weak things that are not due yet wait until the end, and
+  // only fill a session that has nothing new to teach: going over what is not
+  // due is no use to a learner who could be learning something.
+  const reviews = due.filter((item) => !item.early).flatMap((item) => review(item) ?? []);
 
   // --- New material, in ladder order, in whatever room the reviews leave. ---
   const room = roomForNew(reviews.length, maxNew, maxReview);
@@ -504,7 +516,8 @@ export function planSession(
             lexeme: { ...lexeme, audioUrl: audioUrl(wordClip(lexeme)) },
             sentence: display(s),
           },
-          wordChoice(s, target.id, "read-word"),
+          // Recognising a word just shown is near certain; a learner getting most things right skips it.
+          ...(stretch >= 0.5 ? [] : [wordChoice(s, target.id, "read-word")]),
           meaningChoice(s, target, "listen"),
         ]);
         deferred.push(s.tokens.length >= 2 ? tiles(s, target) : pickWord(s, target.id));
@@ -529,7 +542,16 @@ export function planSession(
   // each new thing has been asked for in all three skills. ---
   const exercises: Exercise[] = [...reviews, ...blocks.flat(), ...deferred];
 
-  // --- Nothing due and nothing new: ungraded practice so a session is never empty. ---
+  // --- Room left: weak things not due yet, then ungraded practice, so a session is never empty. ---
+  let early = 0;
+  for (const item of due.filter((d) => d.early)) {
+    if (exercises.length >= minExercises) break;
+    const exercise = review(item);
+    if (exercise) {
+      exercises.push(exercise);
+      early++;
+    }
+  }
   if (exercises.length < minExercises) {
     const spare = leastSeen(content.sentences.filter((s) => isEligible(s) && !usedSentences.has(s.id)));
     for (const s of spare) {
@@ -539,5 +561,5 @@ export function planSession(
     }
   }
 
-  return { exercises, newCount, reviewCount: reviews.length, newHeldBack };
+  return { exercises, newCount, reviewCount: reviews.length + early, newHeldBack };
 }

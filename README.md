@@ -115,6 +115,8 @@ src/lib/
     plan.ts            plans a whole session up front — pure, seeded, no I/O
     session.ts         the queries that fetch only what a plan could use
     grade.ts           what one answer does to the schedule
+    pace.ts            how hard to push a learner, from how often they are right
+    mastery.ts         how well a word is known, in four levels per skill
     variants.ts        the other word orders that are also correct
     author.ts          the LLM as content author, ahead of time only
     assemble.ts        builds a sentence from the author's draft, or rejects it
@@ -147,7 +149,16 @@ a word once it has survived a few reviews.
 learner keeps getting wrong first, then whatever else is due, then teaches the
 next thing on the ladder: words they added themselves, then the curated topics
 in order, then what the app writes once those run out. A topic can be opened on
-its own to focus on it, but nothing has to be chosen.
+its own to focus on it, but nothing has to be chosen. What is not due yet is
+gone over only when there is nothing new to teach.
+
+**The course keeps the learner at about 85% right.** From their last 60 graded
+answers comes a "stretch", from nothing at 85% right to full at 95%. It brings
+in up to twice as much new material a session, moves exercises from
+recognising to producing sooner, and has the app write new material earlier and
+in bigger batches. Harder work brings mistakes, and the stretch eases off with
+them. After each answer the learner sees how well they know the word in each
+skill (Learning, Familiar, Strong, Mastered) and when it comes back.
 
 **A word the learner adds becomes lessons at their level.** It is met alone at
 the start of their next session. Then the author writes sentences that use it,

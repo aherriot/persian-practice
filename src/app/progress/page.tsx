@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 import { requireUser } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { reviewLog } from "@/lib/db/schema";
-import { FRONTIER, MAX_SHAKY } from "@/lib/lesson/expand";
+import { frontierFor, MAX_SHAKY } from "@/lib/lesson/expand";
 import { summariseConfusions } from "@/lib/lesson/confusions";
-import { CONFUSION_DAYS, loadActivityHours, loadConfusions } from "@/lib/lesson/history";
+import { CONFUSION_DAYS, loadActivityHours, loadConfusions, loadStretch } from "@/lib/lesson/history";
 import { summariseJourney, type JourneyItem, type Stage } from "@/lib/lesson/journey";
 import { isReadyForMore, measureProgress } from "@/lib/lesson/progress";
 import { loadCourse, loadKnowledge } from "@/lib/lesson/store";
@@ -117,7 +117,7 @@ function Item({ item, children }: { item: JourneyItem; children: ReactNode }) {
 export default async function ProgressPage() {
   const user = await requireUser();
   const now = new Date();
-  const [content, knowledge, hours, confusionRows, exerciseRows] = await Promise.all([
+  const [content, knowledge, hours, confusionRows, exerciseRows, stretch] = await Promise.all([
     loadCourse(user.id),
     loadKnowledge(user.id),
     loadActivityHours(user.id, now),
@@ -127,6 +127,7 @@ export default async function ProgressPage() {
       .from(reviewLog)
       .where(eq(reviewLog.userId, user.id))
       .groupBy(reviewLog.exercise),
+    loadStretch(user.id, now),
   ]);
 
   const journey = summariseJourney(content, knowledge, now);
@@ -305,7 +306,7 @@ export default async function ProgressPage() {
             <span className="font-semibold text-ink">{journey.due.week}</span> within a week.
           </li>
           <li>
-            {progress.remaining >= FRONTIER ? (
+            {progress.remaining >= frontierFor(stretch) ? (
               <>
                 <span className="font-semibold text-ink">{progress.remaining}</span> new words and grammar points are
                 written and waiting in your lessons.

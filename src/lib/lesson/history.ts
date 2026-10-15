@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { lexemes, reviewLog } from "@/lib/db/schema";
 import type { ActivityHour } from "./activity";
 import type { ConfusionRow } from "./confusions";
+import { PACE_WINDOW, stretchFrom } from "./pace";
 
 /** Streaks are counted from this much history, so they top out here. */
 export const HISTORY_DAYS = 60;
@@ -26,6 +27,20 @@ export async function loadActivityHours(userId: string, now: Date, days = HISTOR
     .where(and(eq(reviewLog.userId, userId), gt(reviewLog.createdAt, new Date(now.getTime() - days * DAY_MS))))
     .groupBy(hour);
   return rows.map((row) => ({ at: Number(row.at), total: row.total, correct: row.correct }));
+}
+
+/** Pace is read from answers no older than this: after a long break, a learner starts afresh. */
+const PACE_DAYS = 14;
+
+/** How hard to push this learner, from their recent graded answers (pace.ts). */
+export async function loadStretch(userId: string, now: Date): Promise<number> {
+  const rows = await db
+    .select({ correct: reviewLog.correct })
+    .from(reviewLog)
+    .where(and(eq(reviewLog.userId, userId), isNotNull(reviewLog.target), gt(reviewLog.createdAt, new Date(now.getTime() - PACE_DAYS * DAY_MS))))
+    .orderBy(desc(reviewLog.createdAt))
+    .limit(PACE_WINDOW);
+  return stretchFrom(rows.map((row) => row.correct));
 }
 
 /** Mix-ups are read from this much history: an old confusion, since put right, drops out. */

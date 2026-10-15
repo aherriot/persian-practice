@@ -9,6 +9,8 @@ import { draftExpansion, draftPatternSentences, NEW_WORD } from "./author";
 import { reviewCandidates, type Candidate, type Draft, type Rejection } from "./drafts";
 import { FORM_PATTERN, formsFor, GRAMMAR_SPINE } from "./forms";
 import { generatedToday, GLOBAL_DAILY_CAP } from "./generate";
+import { loadStretch } from "./history";
+import { newPerSession } from "./pace";
 import { sentenceClip, sentenceText } from "./plan";
 import { isReadyForMore, measureProgress } from "./progress";
 import { loadCourse, loadKnowledge, loadSameWords, loadWordUses } from "./store";
@@ -16,8 +18,10 @@ import type { Lexeme } from "./types";
 import { WORKING_VOCABULARY, workingVocabulary } from "./vocabulary";
 import { ensureTheme, ownedLexeme, validateWord } from "./words";
 
-/** New material is written when fewer than this many unmet words and patterns are left. */
+/** New material is written when fewer than this many unmet words and patterns are left… */
 export const FRONTIER = 4;
+/** …or, for a learner taking it fast (pace.ts), enough for two of their sessions. */
+export const frontierFor = (stretch: number) => Math.max(FRONTIER, 2 * newPerSession(stretch));
 /**
  * …and the learner is getting no more than this many of the things they have
  * met wrong. This is the only brake: a learner who answers everything
@@ -26,6 +30,7 @@ export const FRONTIER = 4;
  * the ceiling on everything generated for everyone (GLOBAL_DAILY_CAP).
  */
 export const MAX_SHAKY = 3;
+/** Words asked for at a time, up to twice as many for a learner at full stretch. */
 const NEW_WORDS = 5;
 const PATTERN_SENTENCES = 3;
 /** Words that can take a new piece of grammar, guaranteed a place in front of the author teaching it. */
@@ -47,10 +52,10 @@ const plainText = (s: Pick<Assembled, "tokens">) => normalizeForCompare(s.tokens
  */
 export async function draftFrontier(userId: string, opts: { force?: boolean } = {}): Promise<Draft> {
   const result: Draft = { candidates: [], rejected: [] };
-  const [content, knowledge] = await Promise.all([loadCourse(userId), loadKnowledge(userId)]);
+  const [content, knowledge, stretch] = await Promise.all([loadCourse(userId), loadKnowledge(userId), loadStretch(userId, new Date())]);
   const progress = measureProgress(content.onLadder, knowledge);
   if (!opts.force) {
-    if (progress.remaining >= FRONTIER) return { ...result, skipped: `${progress.remaining} things still to learn` };
+    if (progress.remaining >= frontierFor(stretch)) return { ...result, skipped: `${progress.remaining} things still to learn` };
     if (!isReadyForMore(progress, MAX_SHAKY)) return { ...result, skipped: "still consolidating what is known" };
   }
   if ((await generatedToday()) >= GLOBAL_DAILY_CAP) return { ...result, skipped: "daily limit reached" };
@@ -93,7 +98,7 @@ export async function draftFrontier(userId: string, opts: { force?: boolean } = 
         ...[...content.lexemes.values()].filter((l) => l.addedBy === "learner").map((l) => l.gloss),
       ]),
     ],
-    count: NEW_WORDS,
+    count: NEW_WORDS + Math.round(stretch * NEW_WORDS),
   });
   const spellings = new Set([...content.lexemes.values()].map((l) => normalizeForCompare(l.fa)));
   for (const { sentence: draft, ...entry } of drafts) {
