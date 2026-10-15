@@ -3,7 +3,8 @@ import { wordClip } from "@/lib/audio-key";
 import { db } from "@/lib/db";
 import { audioClips, lexemes, patterns, reviewLog, sentences, themes } from "@/lib/db/schema";
 import { confusedWith, summariseConfusions } from "./confusions";
-import { loadConfusions } from "./history";
+import { loadConfusions, loadStretch } from "./history";
+import { newPerSession } from "./pace";
 import { DEFAULT_MAX_NEW, DEFAULT_MAX_REVIEW, dueTargets, planSession, type PlanOptions } from "./plan";
 import {
   allIn,
@@ -58,12 +59,12 @@ const inTheme = (themeId: string) => {
  */
 export async function loadSession(
   userId: string,
-  opts: Omit<PlanOptions, "seen" | "distractors" | "alternates" | "confusions" | "unspeakable" | "recent"> & Scope,
+  opts: Omit<PlanOptions, "seen" | "distractors" | "alternates" | "confusions" | "unspeakable" | "recent" | "stretch"> & Scope,
 ): Promise<SessionPlan> {
-  const { themeId, now, maxNew = DEFAULT_MAX_NEW, maxReview = DEFAULT_MAX_REVIEW } = opts;
+  const { themeId, now, maxReview = DEFAULT_MAX_REVIEW } = opts;
   const scope = and(visibleSentence(userId), themeId ? inTheme(themeId) : undefined)!;
 
-  const [known, patternRows, confusionRows, recentRows] = await Promise.all([
+  const [known, patternRows, confusionRows, recentRows, stretch] = await Promise.all([
     loadKnowledge(userId),
     db.select().from(patterns),
     loadConfusions(userId, now),
@@ -71,7 +72,10 @@ export async function loadSession(
       .selectDistinct({ target: reviewLog.target })
       .from(reviewLog)
       .where(and(eq(reviewLog.userId, userId), isNotNull(reviewLog.target), gt(reviewLog.createdAt, new Date(now.getTime() - RECENT_MS)))),
+    loadStretch(userId, now),
   ]);
+  // `maxNew` is what the page asks for; a learner getting nearly everything right is brought up to twice that.
+  const maxNew = newPerSession(stretch, opts.maxNew ?? DEFAULT_MAX_NEW);
   const recent = new Set(recentRows.map((row) => row.target!));
 
   // What the learner keeps getting wrong comes first in practice across the
@@ -199,6 +203,7 @@ export async function loadSession(
       maxReview,
       weak,
       recent,
+      stretch,
       seen: new Map(poolRows.map((row) => [row.sentence.id, row.seen])),
       distractors,
       alternates,
