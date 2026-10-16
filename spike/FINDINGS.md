@@ -771,3 +771,59 @@ All 11 clips with غ were remade and verified. The new clip of غذا rises in
   take, so these clips take more attempts. Two sentences needed three runs.
 - The measure is not in the pipeline. A new clip is still verified for its
   words only.
+
+---
+
+## 17. What the OpenAI bill was spent on, and what cut it
+
+**The bill.** Five days of use (Oct 11–15 2026) cost $10.13. Priced per model
+from the usage export, it reproduces the invoice to the cent: `gpt-5.5`
+authoring $5.57 (55%), the `gpt-audio-1.5` listener $3.87 (38%),
+`gpt-4o-mini-tts` $0.69 (7%). Of the authoring, $4.87 was output, and most of
+that was hidden reasoning: about 1,700 output tokens a call for a few hundred
+tokens of JSON. Every model call now logs one line of JSON with its scope and
+tokens, reasoning separated out (`src/lib/usage.ts`), so the next question can
+be answered per call rather than per model.
+
+**Authoring** (`npx tsx spike/author-cost-probe.ts <email>`: drafts and reviews
+practice sentences from a real course, stores nothing):
+
+| | Lost at assembly | Kept after review | Drafting reasoning | Per kept sentence |
+|---|---|---|---|---|
+| Default effort, default tier | 17/24 | 7/24 | 1,024 | ~$0.034 |
+| Low effort | 9/24 | 13/24 | ~290 | ~$0.017 |
+| Low effort, flex, word ids as an enum | 1/48 | 36/48 | ~260 | ~$0.006 |
+
+- **Low effort** for drafts. The reviewer keeps the default: nothing checks it.
+- **Most drafted sentences died at assembly.** In "stretch" mode the author
+  wrote known words as Persian text instead of their id (چرا، الان، اگه), and
+  each such sentence was paid for and thrown away. The JSON schema now lists
+  the allowed ids as an enum, so no other word can be written.
+- **Flex tier** for the background calls (draft, review, expansion, word
+  lessons): half price, falling back to the default tier on a 429. Adding a
+  word and corrections, which someone waits on, stay at the default tier.
+  `gpt-audio-1.5` refuses flex (`400 Invalid service_tier`).
+
+**Listener** (`npm run spike:listener [model]`, 46 listens a run):
+
+| | Listens | Bad listens passed | Good listens failed |
+|---|---|---|---|
+| `gpt-audio-1.5`, reply echoes each expected word | 92 | 1 | 19 |
+| `gpt-audio-1.5`, reply without the echo | 92 | 4 | 12 |
+| `gpt-audio-mini` | 46 | 2 | 21 |
+
+Dropping the echo was meant to shorten the reply. It did not (about 52 output
+tokens against about 43) and let more bad listens through, so it was reverted.
+`gpt-audio-mini` disagreed with the human on half the listens and passed the
+stored *havij va sib* clip that the listener exists to catch. The listener
+stays as it was, two listens a take.
+
+### Caveats
+
+- Flex at half price is OpenAI's published rate, not yet seen on an invoice;
+  the `tier` field in the usage log says which calls ran at it.
+- Six probe rounds from one learner's course. The share kept will differ with
+  other vocabulary.
+- Batching more sentences per call would mostly share the word list (~4,900
+  input tokens, ~$0.02 a call at flex); output, which is most of the cost,
+  grows with the sentences. Not worth more repeats in one draft.

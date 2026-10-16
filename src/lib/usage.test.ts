@@ -15,6 +15,7 @@ test("separates hidden reasoning from the rest of the output", () => {
       total_tokens: 3100,
       completion_tokens_details: { reasoning_tokens: 1300 },
     },
+    "flex",
     NOW,
   );
   assert.deepEqual(report, {
@@ -25,6 +26,7 @@ test("separates hidden reasoning from the rest of the output", () => {
     output: 1700,
     reasoning: 1300,
     inputAudio: undefined,
+    tier: "flex",
     time: NOW.toISOString(),
   });
 });
@@ -34,6 +36,7 @@ test("counts the audio a listener was sent", () => {
     "listener",
     "gpt-audio-1.5",
     { prompt_tokens: 235, completion_tokens: 40, total_tokens: 275, prompt_tokens_details: { audio_tokens: 20 } },
+    undefined,
     NOW,
   );
   assert.equal(report.inputAudio, 20);

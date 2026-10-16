@@ -1,4 +1,5 @@
 import { z } from "zod";
+import OpenAI from "openai";
 import type { ReasoningEffort } from "openai/resources/shared";
 import { openai } from "@/lib/openai";
 import { reportUsage } from "@/lib/usage";
@@ -22,33 +23,54 @@ const AUTHOR_TIMEOUT_MS = 5 * 60_000;
  * wrong, the reviewer or the assembler throws out. The reviewer and
  * corrections keep the model's default, since nothing checks them after.
  */
-const DRAFT_EFFORT: ReasoningEffort = "low";
+const DRAFT_EFFORT = (process.env.OPENAI_DRAFT_EFFORT || "low") as ReasoningEffort;
+
+/**
+ * Work nobody is waiting on goes at OpenAI's flex tier: half the price, slower,
+ * and now and then refused for want of capacity, when it is asked again at the
+ * normal tier. Set OPENAI_AUTHOR_TIER=default to turn it off.
+ */
+const BACKGROUND_TIER = process.env.OPENAI_AUTHOR_TIER === "default" ? "default" : "flex";
+
+type Ask = {
+  /** Omitted: the model's default. */
+  effort?: ReasoningEffort;
+  /** Runs in a job, not while someone waits on the answer. */
+  background?: boolean;
+};
 
 async function askJson<T extends z.ZodType>(
   name: string,
   schema: T,
   system: string,
   user: string,
-  effort?: ReasoningEffort,
+  { effort, background = false }: Ask = {},
 ): Promise<z.infer<T>> {
-  const response = await openai.chat.completions.create(
-    {
-      model: CONTENT_MODEL,
-      ...(effort && { reasoning_effort: effort }),
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: { name, strict: true, schema: z.toJSONSchema(schema) as Record<string, unknown> },
+  const ask = (tier: "default" | "flex") =>
+    openai.chat.completions.create(
+      {
+        model: CONTENT_MODEL,
+        service_tier: tier,
+        ...(effort && { reasoning_effort: effort }),
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: { name, strict: true, schema: z.toJSONSchema(schema) as Record<string, unknown> },
+        },
       },
-    },
-    // Authoring runs in the background and the model thinks before it writes;
-    // the client's default one-minute limit is too short for a batch.
-    { timeout: AUTHOR_TIMEOUT_MS },
-  );
-  reportUsage(`author:${name}`, response.model, response.usage);
+      // Authoring runs in the background and the model thinks before it writes;
+      // the client's default one-minute limit is too short for a batch.
+      { timeout: AUTHOR_TIMEOUT_MS },
+    );
+  const tier = background ? BACKGROUND_TIER : "default";
+  const response = await ask(tier).catch((err) => {
+    if (tier === "flex" && err instanceof OpenAI.APIError && err.status === 429) return ask("default");
+    throw err;
+  });
+  reportUsage(`author:${name}`, response.model, response.usage, response.service_tier);
   return schema.parse(JSON.parse(response.choices[0]?.message.content ?? "null"));
 }
 
@@ -56,15 +78,20 @@ const REGISTER = `The Persian is everyday spoken Tehrani, the way people actuall
 
 // --- Sentences ---
 
-const Drafts = z.object({
-  sentences: z.array(
-    z.object({
-      english: z.string(),
-      kind: z.enum(["statement", "yes-no-question", "wh-question"]),
-      tokens: z.array(z.object({ word: z.string(), form: z.enum(FORMS), comma: z.boolean() })),
-    }),
-  ),
-});
+/**
+ * One drafted sentence, whose words can only be the ids it is given. Asked
+ * for a reason or a contrast, the model reached for words the learner does
+ * not have (why, now, if) and over half of what it wrote was thrown away
+ * unread; a schema that lists the ids leaves it no other word to write.
+ */
+const sentenceDraft = (ids: string[]) =>
+  z.object({
+    english: z.string(),
+    kind: z.enum(["statement", "yes-no-question", "wh-question"]),
+    tokens: z.array(z.object({ word: z.enum(ids as [string, ...string[]]), form: z.enum(FORMS), comma: z.boolean() })),
+  });
+
+const drafts = (ids: string[]) => z.object({ sentences: z.array(sentenceDraft(ids)) });
 
 export type AuthorRequest = {
   /** Words the sentences may use. */
@@ -110,7 +137,7 @@ ${request.existing.join("\n") || "(none)"}
 
 Write up to ${request.count} new sentences.`;
 
-  return (await askJson("sentences", Drafts, system, user, DRAFT_EFFORT)).sentences;
+  return (await askJson("sentences", drafts(request.words.map((w) => w.id)), system, user, { effort: DRAFT_EFFORT, background: true })).sentences;
 }
 
 // --- Review ---
@@ -146,7 +173,7 @@ Be strict. A wrong sentence taught to a learner is far worse than a rejected goo
     })
     .join("\n");
 
-  const { verdicts } = await askJson("review", Verdicts, system, user);
+  const { verdicts } = await askJson("review", Verdicts, system, user, { background: true });
   return candidates.map((_, i) => {
     const verdict = verdicts.find((v) => v.number === i + 1);
     const keep = Boolean(verdict?.natural && verdict.englishCorrect && !verdict.repeat);
@@ -196,7 +223,7 @@ If the learner gives a verb as an infinitive or in English ("to go"), give the f
 Entries already in the course, for style:
 ${examples.map((w) => `${w.fa} | ${w.voc} | ${w.translit} | ${w.gloss}`).join("\n")}`;
   const user = hint ? `${input}\n\nWhat the learner says it means or where they heard it: ${hint}` : input;
-  return askJson("word", WordDraft, system, user, DRAFT_EFFORT);
+  return askJson("word", WordDraft, system, user, { effort: DRAFT_EFFORT });
 }
 
 // --- Corrections ---
@@ -246,19 +273,8 @@ Answer again in a way that avoids this. If it cannot be avoided, change nothing 
 
 // --- New material ---
 
-const Expansion = z.object({
-  items: z.array(
-    z.object({
-      ...wordFields,
-      sentence: z.object({
-        english: z.string(),
-        kind: z.enum(["statement", "yes-no-question", "wh-question"]),
-        tokens: z.array(z.object({ word: z.string(), form: z.enum(FORMS), comma: z.boolean() })),
-      }),
-    }),
-  ),
-});
-export type ExpansionItem = z.infer<typeof Expansion>["items"][number];
+const expansion = (ids: string[]) => z.object({ items: z.array(z.object({ ...wordFields, sentence: sentenceDraft(ids) })) });
+export type ExpansionItem = z.infer<ReturnType<typeof expansion>>["items"][number];
 
 /** The id a draft uses for its own new word, before that word has a real one. */
 export const NEW_WORD = "NEW";
@@ -317,10 +333,9 @@ What they study and care about: ${request.interests.join(", ") || "everyday conv
 
 Choose ${request.count} new words.`;
 
-  return (await askJson("expansion", Expansion, system, user, DRAFT_EFFORT)).items;
+  return (await askJson("expansion", expansion([...request.known.map((w) => w.id), NEW_WORD]), system, user, { effort: DRAFT_EFFORT, background: true })).items;
 }
 
-const PatternDrafts = z.object({ sentences: Drafts.shape.sentences });
 
 /** Sentences that show one new piece of grammar using only words the learner knows. */
 export async function draftPatternSentences(
@@ -353,7 +368,7 @@ ${known.map((w) => `${w.id} — ${w.fa} — ${w.translit} — ${w.gloss} — ${a
 
 Write ${count} sentences.`;
 
-  return (await askJson("pattern", PatternDrafts, system, user, DRAFT_EFFORT)).sentences;
+  return (await askJson("pattern", drafts(known.map((w) => w.id)), system, user, { effort: DRAFT_EFFORT, background: true })).sentences;
 }
 
 // --- Lessons for a word the learner added ---
@@ -370,11 +385,15 @@ export type Level = {
 /** The ids a draft uses for the words it adds alongside the learner's: NEW1, NEW2… */
 export const companionId = (n: number) => `NEW${n}`;
 
-const WordLessons = z.object({
-  companions: z.array(z.object({ ...wordFields, why: z.string() })),
-  sentences: Drafts.shape.sentences,
-});
-export type WordLessons = z.infer<typeof WordLessons>;
+/** At most this many companion words with a lesson; a beginner gets one fewer. */
+const MAX_COMPANIONS = 3;
+
+const wordLessons = (ids: string[]) =>
+  z.object({
+    companions: z.array(z.object({ ...wordFields, why: z.string() })),
+    sentences: z.array(sentenceDraft(ids)),
+  });
+export type WordLessons = z.infer<ReturnType<typeof wordLessons>>;
 
 export type WordLessonRequest = {
   /** The word the learner added. */
@@ -425,7 +444,7 @@ Write sentences that use their word, in the order they should be learned:
 - comma: true when a comma follows that word.
 - english: a natural translation of exactly what the Persian says.
 
-Companion words: the word may need others to be useful at all, which the learner does not have yet. Football is played, so a beginner who adds "football" needs "I play" (بازی می‌کنم) to say "I play football". Add such a word only if the sentences need it and nothing in the list will do; at most ${level.stage === "beginner" ? 2 : 3}, and none at all if the word can already be used.
+Companion words: the word may need others to be useful at all, which the learner does not have yet. Football is played, so a beginner who adds "football" needs "I play" (بازی می‌کنم) to say "I play football". Add such a word only if the sentences need it and nothing in the list will do; at most ${level.stage === "beginner" ? MAX_COMPANIONS - 1 : MAX_COMPANIONS}, and none at all if the word can already be used.
 - Each companion is one word or fixed phrase, in the form the sentences use it (each inflected verb form is its own word: "I play", "you play").
 - Refer to them in sentences as "${companionId(1)}", "${companionId(2)}", … in the order listed.
 - Never a word in the list or one already in the course.
@@ -447,5 +466,6 @@ ${request.upcoming.map((w) => `${w.fa} (${w.gloss})`).join(", ") || "(none)"}
 
 Write up to ${request.count} sentences.`;
 
-  return askJson("word_lessons", WordLessons, system, user, DRAFT_EFFORT);
+  const ids = [word.id, ...request.known.map((w) => w.id), ...Array.from({ length: MAX_COMPANIONS }, (_, i) => companionId(i + 1))];
+  return askJson("word_lessons", wordLessons(ids), system, user, { effort: DRAFT_EFFORT, background: true });
 }

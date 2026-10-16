@@ -16,10 +16,18 @@ export type UsageReport = {
   /** The part of output spent thinking, which is billed but never seen. */
   reasoning?: number;
   inputAudio?: number;
+  /** "flex" for work billed at half price. */
+  tier?: string;
   time: string;
 };
 
-export function describeUsage(scope: string, model: string, usage: CompletionUsage, now = new Date()): UsageReport {
+export function describeUsage(
+  scope: string,
+  model: string,
+  usage: CompletionUsage,
+  tier?: string | null,
+  now = new Date(),
+): UsageReport {
   return {
     level: "usage",
     scope,
@@ -28,10 +36,11 @@ export function describeUsage(scope: string, model: string, usage: CompletionUsa
     output: usage.completion_tokens,
     reasoning: usage.completion_tokens_details?.reasoning_tokens || undefined,
     inputAudio: usage.prompt_tokens_details?.audio_tokens || undefined,
+    tier: tier ?? undefined,
     time: now.toISOString(),
   };
 }
 
-export function reportUsage(scope: string, model: string, usage: CompletionUsage | undefined): void {
-  if (usage) console.info(JSON.stringify(describeUsage(scope, model, usage)));
+export function reportUsage(scope: string, model: string, usage: CompletionUsage | undefined, tier?: string | null): void {
+  if (usage) console.info(JSON.stringify(describeUsage(scope, model, usage, tier)));
 }
