@@ -31,7 +31,7 @@ Listen carefully. For each expected word, write what was actually spoken at that
 
 Also say whether there is an unnatural pause or break between words that a native speaker would run together.
 
-Reply with JSON only, one entry per expected word in order: {"words":[{"heard":"...","match":true}],"pause":false}`;
+Reply with JSON only: {"words":[{"expected":"...","heard":"...","match":true}],"pause":false}`;
 
 /** The listener occasionally answers as if no audio were attached; ask again rather than fail the clip. */
 const LISTEN_TRIES = 3;
