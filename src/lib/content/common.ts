@@ -35,6 +35,7 @@ export const W = {
   ye: { id: "ye", fa: "یه", voc: "یِه", translit: "ye", gloss: "a / one", literary: "یک" },
   ba: { id: "ba", fa: "با", voc: "با", translit: "bâ", gloss: "with" },
   emruz: { id: "emruz", fa: "امروز", voc: "اِمروز", translit: "emruz", gloss: "today" },
+  chi: { id: "chi", fa: "چی", voc: "چی", translit: "chi", gloss: "what", literary: "چه" },
 
   // --- Courtesies ---
   salam: { id: "salam", fa: "سلام", voc: "سَلام", translit: "salâm", gloss: "hello" },
@@ -70,6 +71,16 @@ export const W = {
     literary: "می‌خواهم",
     verbPerson: "1sg",
   },
+  mikhay: {
+    id: "mikhay",
+    fa: "می‌خوای",
+    voc: "می‌خوای",
+    translit: "mikhây",
+    gloss: "you want",
+    lemma: "خواستن",
+    literary: "می‌خواهی",
+    verbPerson: "2sg",
+  },
   chande: { id: "chande", fa: "چنده", voc: "چَندِه", translit: "chande", gloss: "how much is it?", literary: "چند است" },
 
   // --- Places ---
@@ -79,6 +90,10 @@ export const W = {
 
   // --- Things ---
   nun: { id: "nun", fa: "نون", voc: "نون", translit: "nun", gloss: "bread", literary: "نان" },
+  ghaza: { id: "ghaza", fa: "غذا", voc: "غَذا", translit: "ghazâ", gloss: "food" },
+  berenj: { id: "berenj", fa: "برنج", voc: "بِرِنج", translit: "berenj", gloss: "rice" },
+  morgh: { id: "morgh", fa: "مرغ", voc: "مُرغ", translit: "morgh", gloss: "chicken" },
+  khoshmaze: { id: "khoshmaze", fa: "خوشمزه", voc: "خُوشمَزِه", translit: "khoshmaze", gloss: "delicious" },
 } satisfies Record<string, LexemeSeed>;
 
 export const P = {
